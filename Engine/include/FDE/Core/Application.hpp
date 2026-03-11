@@ -2,10 +2,12 @@
 
 #include "FDE/Export.hpp"
 
-namespace FDE {
+namespace FDE
+{
 
-class FDE_API Application {
-public:
+class FDE_API Application
+{
+  public:
     Application() = default;
     virtual ~Application() = default;
 

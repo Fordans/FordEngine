@@ -1,9 +1,11 @@
 #include "FDE/Core/Application.hpp"
 
-namespace FDE {
+namespace FDE
+{
 
-void Application::Run() {
-    // 主循环占位
+void Application::Run()
+{
+    // empty for now
 }
 
 } // namespace FDE

@@ -11,7 +11,17 @@ class FDE_API Application
     Application() = default;
     virtual ~Application() = default;
 
-    void Run();
+    virtual void Run();
+
+  private:
+    bool m_isRunning = true;
 };
+
+/*
+ Implemented by client
+ Customize your own Application
+ Reference: EditorApplication
+*/
+Application* CreateApplication();
 
 } // namespace FDE

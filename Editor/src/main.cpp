@@ -1,15 +1,15 @@
-#include "FDE/Core/Application.hpp"
-#include "FDE/Core/Log.hpp"
+#include "EditorApplication.hpp"
 
-#include <memory>
+FDE::Application* FDE::CreateApplication()
+{
+    return new EditorApplication();
+}
 
 int main(int argc, char* argv[])
 {
-    FDE::LogInfo("FDEditor starting...");
-
-    auto app = std::make_unique<FDE::Application>();
+    auto app = FDE::CreateApplication();
     app->Run();
 
-    FDE::LogInfo("FDEditor exiting.");
+    delete app;
     return 0;
 }

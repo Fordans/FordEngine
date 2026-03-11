@@ -3,9 +3,6 @@
 namespace FDE
 {
 
-void Application::Run()
-{
-    // empty for now
-}
+void Application::Run() {}
 
 } // namespace FDE

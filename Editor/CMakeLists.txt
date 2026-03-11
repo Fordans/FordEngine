@@ -7,6 +7,7 @@ target_include_directories(FDEditor
 
 target_sources(FDEditor PRIVATE
     src/main.cpp
+    src/EditorApplication.cpp
 )
 
 target_link_libraries(FDEditor

@@ -7,17 +7,10 @@ target_include_directories(FordEngine
         $<INSTALL_INTERFACE:include>
 )
 
-set(ENGINE_SOURCES
+target_sources(FordEngine PRIVATE 
     src/Core/Application.cpp
     src/Core/Log.cpp
-    # src/Math/Vector.cpp
-    # src/Platform/Window.cpp
-    # src/Graphics/Renderer.cpp
-    # src/Input/Input.cpp
-    # src/Scene/Scene.cpp
 )
-
-target_sources(FordEngine PRIVATE ${ENGINE_SOURCES})
 
 # Precompiled headers (optional, to speed up compilation)
 # target_precompile_headers(FordEngine PRIVATE include/FDE/pch.hpp)

@@ -18,10 +18,7 @@ foreach(OUTPUTCONFIG ${CMAKE_CONFIGURATION_TYPES})
 endforeach()
 
 # ThirdParty
-set(SPDLOG_MASTER_PROJECT OFF CACHE BOOL "" FORCE)
-set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
-set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-add_subdirectory(ThirdParty/spdlog)
+add_subdirectory(ThirdParty)
 
 add_subdirectory(Engine)
 add_subdirectory(Editor)

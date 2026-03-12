@@ -3,9 +3,14 @@
 namespace FDE
 {
 
-void SetLogLevel(spdlog::level::level_enum level)
+void SetLogCoreLevel(spdlog::level::level_enum level)
 {
-    GetLogger()->set_level(level);
+    GetCoreLogger()->set_level(level);
+}
+
+void SetLogClientLevel(spdlog::level::level_enum level)
+{
+    GetClientLogger()->set_level(level);
 }
 
 } // namespace FDE

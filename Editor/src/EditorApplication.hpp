@@ -5,8 +5,9 @@
 class EditorApplication : public FDE::Application
 {
   public:
-    EditorApplication() {}
-    ~EditorApplication() {}
+    EditorApplication();
+    ~EditorApplication();
 
-    void Run() override;
+  private:
+    bool Initialize();
 };

@@ -1,7 +1,7 @@
-add_library(FDEngine SHARED)
-target_compile_definitions(FDEngine PRIVATE FDEngine_EXPORTS)
+add_library(FordEngine SHARED)
+target_compile_definitions(FordEngine PRIVATE FordEngine_EXPORTS)
 
-target_include_directories(FDEngine
+target_include_directories(FordEngine
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
@@ -17,12 +17,12 @@ set(ENGINE_SOURCES
     # src/Scene/Scene.cpp
 )
 
-target_sources(FDEngine PRIVATE ${ENGINE_SOURCES})
+target_sources(FordEngine PRIVATE ${ENGINE_SOURCES})
 
 # Precompiled headers (optional, to speed up compilation)
-# target_precompile_headers(FDEngine PRIVATE include/FDE/pch.hpp)
+# target_precompile_headers(FordEngine PRIVATE include/FDE/pch.hpp)
 
-target_link_libraries(FDEngine
+target_link_libraries(FordEngine
     PUBLIC
         spdlog::spdlog
 )

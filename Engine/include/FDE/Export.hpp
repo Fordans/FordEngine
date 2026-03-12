@@ -1,7 +1,7 @@
 #pragma once
 
 #ifdef _WIN32
-#ifdef FDEngine_EXPORTS
+#ifdef FordEngine_EXPORTS
 #define FDE_API __declspec(dllexport)
 #else
 #define FDE_API __declspec(dllimport)

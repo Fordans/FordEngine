@@ -28,5 +28,5 @@ if errorlevel 1 (
 )
 
 echo.
-echo [FDE] Build succeeded: bin\DEBUG\FDEngine.dll, bin\DEBUG\FDEditor.exe
+echo [FDE] Build succeeded: bin\DEBUG\FordEngine.dll, bin\DEBUG\FordEditor.exe
 exit /b 0

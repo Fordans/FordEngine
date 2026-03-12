@@ -8,6 +8,9 @@ class EditorApplication : public FDE::Application
     EditorApplication();
     ~EditorApplication();
 
+  protected:
+    FDE::WindowSpec GetWindowSpec() const override;
+
   private:
     bool Initialize();
 };

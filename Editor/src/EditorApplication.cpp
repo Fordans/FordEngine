@@ -1,4 +1,4 @@
-﻿#include "EditorApplication.hpp"
+#include "EditorApplication.hpp"
 
 EditorApplication::EditorApplication()
 {
@@ -9,6 +9,15 @@ EditorApplication::EditorApplication()
 }
 
 EditorApplication::~EditorApplication() {}
+
+FDE::WindowSpec EditorApplication::GetWindowSpec() const
+{
+    FDE::WindowSpec spec;
+    spec.width = 1600;
+    spec.height = 900;
+    spec.title = "Ford Editor";
+    return spec;
+}
 
 bool EditorApplication::Initialize()
 {

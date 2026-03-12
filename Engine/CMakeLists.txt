@@ -10,6 +10,7 @@ target_include_directories(FordEngine
 target_sources(FordEngine PRIVATE 
     src/Core/Application.cpp
     src/Core/Log.cpp
+    src/Window/Window.cpp
 )
 
 # Precompiled headers (optional, to speed up compilation)
@@ -18,4 +19,5 @@ target_sources(FordEngine PRIVATE
 target_link_libraries(FordEngine
     PUBLIC
         spdlog::spdlog
+        glfw
 )

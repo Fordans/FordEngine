@@ -5,3 +5,4 @@
 
 #include "FDE/Core/Application.hpp"
 #include "FDE/Core/Log.hpp"
+#include "FDE/Window/Window.hpp"

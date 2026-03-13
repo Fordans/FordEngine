@@ -7,6 +7,7 @@ target_sources(FordEngine PRIVATE
     src/ImGui/ImGuiContext.cpp
     src/Window/Window.cpp
     src/Editor/EditorApplication.cpp
+    src/Editor/EditorPreferences.cpp
 )
 
 # Precompiled headers (optional, to speed up compilation)
@@ -18,6 +19,7 @@ target_include_directories(FordEngine
         $<INSTALL_INTERFACE:include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/ThirdParty/fds
 )
 
 target_link_libraries(FordEngine

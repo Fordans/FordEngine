@@ -69,6 +69,14 @@ void Window::SwapBuffers()
     }
 }
 
+void Window::RequestClose()
+{
+    if (m_window)
+    {
+        glfwSetWindowShouldClose(m_window, GLFW_TRUE);
+    }
+}
+
 void Window::GetFramebufferSize(int& width, int& height) const
 {
     if (m_window)

@@ -27,6 +27,7 @@ class FDE_API Window
 
     void OnUpdate();
     void SwapBuffers();
+    void RequestClose();
     bool ShouldClose() const;
     bool IsValid() const { return m_window != nullptr; }
 

@@ -200,8 +200,41 @@ void Window::ProcessTitleBarDrag(float titleBarHeight, float excludeRightWidth)
         }
         if (s_dragging)
         {
-            glfwSetWindowPos(m_window, winX + static_cast<int>(screenX - s_prevScreenX),
-                            winY + static_cast<int>(screenY - s_prevScreenY));
+            int newX = winX + static_cast<int>(screenX - s_prevScreenX);
+            int newY = winY + static_cast<int>(screenY - s_prevScreenY);
+
+            // 限制在显示器工作区内，避免拖到任务栏下方无法找回
+            GLFWmonitor* monitor = glfwGetWindowMonitor(m_window);
+            if (!monitor)
+            {
+                int centerX = newX + winW / 2, centerY = newY + winH / 2;
+                int count;
+                GLFWmonitor** monitors = glfwGetMonitors(&count);
+                for (int i = 0; i < count; ++i)
+                {
+                    int mx, my, mw, mh;
+                    glfwGetMonitorWorkarea(monitors[i], &mx, &my, &mw, &mh);
+                    if (centerX >= mx && centerX < mx + mw && centerY >= my && centerY < my + mh)
+                    {
+                        monitor = monitors[i];
+                        break;
+                    }
+                }
+                if (!monitor)
+                    monitor = glfwGetPrimaryMonitor();
+            }
+            if (monitor)
+            {
+                int workX, workY, workW, workH;
+                glfwGetMonitorWorkarea(monitor, &workX, &workY, &workW, &workH);
+                // 仅限制标题栏不超出工作区上下，保证可拖回
+                if (newY < workY)
+                    newY = workY;
+                if (newY + static_cast<int>(titleBarHeight) > workY + workH)
+                    newY = workY + workH - static_cast<int>(titleBarHeight);
+            }
+
+            glfwSetWindowPos(m_window, newX, newY);
             s_prevScreenX = screenX;
             s_prevScreenY = screenY;
         }

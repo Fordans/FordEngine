@@ -107,19 +107,22 @@ bool ImGuiContext::Init(GLFWwindow* window)
     colors[ImGuiCol_TableBorderStrong] = ImVec4(0.45f, 0.43f, 0.43f, 1.00f);
     colors[ImGuiCol_TableBorderLight] = ImVec4(0.30f, 0.28f, 0.28f, 1.00f);
 
+    // 整体放大控件
+    style.ScaleAllSizes(1.35f);
+
     // 自定义字体：Angel wish.ttf
     std::string fontPath = ResolveResourcePath("Angel wish.ttf");
     if (!fontPath.empty())
     {
         io.Fonts->Clear();
         ImFont* font = io.Fonts->AddFontFromFileTTF(
-            fontPath.c_str(), 28.0f, nullptr,
+            fontPath.c_str(), 36.0f, nullptr,
             io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
         if (!font)
             io.Fonts->AddFontDefault(); // 加载失败时回退到默认字体
         // 标题栏用大号字体
         m_titleFont = io.Fonts->AddFontFromFileTTF(
-            fontPath.c_str(), 40.0f, nullptr,
+            fontPath.c_str(), 48.0f, nullptr,
             io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
         if (!m_titleFont)
             m_titleFont = font;

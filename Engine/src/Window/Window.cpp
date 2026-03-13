@@ -34,6 +34,8 @@ Window::Window(const WindowSpec& spec)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 #endif
 
+    glfwWindowHint(GLFW_DECORATED, spec.decorated ? GLFW_TRUE : GLFW_FALSE);
+
     m_window = glfwCreateWindow(m_width, m_height, m_title.c_str(), nullptr, nullptr);
     if (!m_window)
     {
@@ -44,6 +46,20 @@ Window::Window(const WindowSpec& spec)
 
     glfwMakeContextCurrent(m_window);
     glfwSwapInterval(1); // Enable vsync
+
+    // 无边框窗口居中显示，避免贴边导致标题栏被遮挡无法拖动
+    if (!spec.decorated)
+    {
+        GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+        if (monitor)
+        {
+            int workX, workY, workW, workH;
+            glfwGetMonitorWorkarea(monitor, &workX, &workY, &workW, &workH);
+            int posX = workX + (workW - m_width) / 2;
+            int posY = workY + (workH - m_height) / 2;
+            glfwSetWindowPos(m_window, posX, posY);
+        }
+    }
 }
 
 Window::~Window()
@@ -74,6 +90,73 @@ void Window::RequestClose()
     if (m_window)
     {
         glfwSetWindowShouldClose(m_window, GLFW_TRUE);
+    }
+}
+
+void Window::Minimize()
+{
+    if (m_window)
+        glfwIconifyWindow(m_window);
+}
+
+void Window::Maximize()
+{
+    if (m_window)
+        glfwMaximizeWindow(m_window);
+}
+
+void Window::Restore()
+{
+    if (m_window)
+        glfwRestoreWindow(m_window);
+}
+
+bool Window::IsMaximized() const
+{
+    return m_window && glfwGetWindowAttrib(m_window, GLFW_MAXIMIZED);
+}
+
+void Window::ProcessTitleBarDrag(float titleBarHeight, float excludeRightWidth)
+{
+    if (!m_window || titleBarHeight <= 0.0f)
+        return;
+
+    static bool s_dragging = false;
+    static double s_prevScreenX = 0, s_prevScreenY = 0;
+
+    int winW, winH;
+    glfwGetWindowSize(m_window, &winW, &winH);
+
+    double cursorX, cursorY;
+    glfwGetCursorPos(m_window, &cursorX, &cursorY);
+    int winX, winY;
+    glfwGetWindowPos(m_window, &winX, &winY);
+    double screenX = winX + cursorX;
+    double screenY = winY + cursorY;
+
+    int mouseButton = glfwGetMouseButton(m_window, GLFW_MOUSE_BUTTON_LEFT);
+
+    if (mouseButton == GLFW_PRESS)
+    {
+        bool inTitleArea = cursorY < static_cast<double>(titleBarHeight);
+        bool inButtonArea = excludeRightWidth > 0 && cursorX >= winW - static_cast<double>(excludeRightWidth);
+        if (!s_dragging && inTitleArea && !inButtonArea)
+        {
+            s_dragging = true;
+            s_prevScreenX = screenX;
+            s_prevScreenY = screenY;
+        }
+        if (s_dragging)
+        {
+            glfwSetWindowPos(m_window, winX + static_cast<int>(screenX - s_prevScreenX),
+                            winY + static_cast<int>(screenY - s_prevScreenY));
+            s_prevScreenX = screenX;
+            s_prevScreenY = screenY;
+        }
+    }
+    else
+    {
+        s_dragging = false;
     }
 }
 

@@ -21,19 +21,31 @@ WindowSpec EditorApplication::GetWindowSpec() const
     spec.width = m_preferences->GetWindowWidth();
     spec.height = m_preferences->GetWindowHeight();
     spec.title = "Ford Editor";
+    spec.decorated = false; // Frameless for unified ImGui style
     return spec;
 }
 
 void EditorApplication::OnUpdate()
 {
     RenderMainUI();
+    // Title bar drag: exclude right 120px (minimize/maximize/close buttons)
+    if (Window* w = GetWindow(); w)
+        w->ProcessTitleBarDrag(TITLE_BAR_HEIGHT, 120.0f);
 }
 
 void EditorApplication::RenderMainUI()
 {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(viewport->WorkPos);
-    ImGui::SetNextWindowSize(viewport->WorkSize);
+
+    // 自定义标题栏（置顶先绘制）
+    RenderTitleBar();
+
+    // 主内容区：位于标题栏下方
+    ImVec2 mainPos = ImVec2(viewport->WorkPos.x, viewport->WorkPos.y + TITLE_BAR_HEIGHT);
+    ImVec2 mainSize = ImVec2(viewport->WorkSize.x, viewport->WorkSize.y - TITLE_BAR_HEIGHT);
+
+    ImGui::SetNextWindowPos(mainPos);
+    ImGui::SetNextWindowSize(mainSize);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
@@ -73,6 +85,58 @@ void EditorApplication::RenderMainUI()
     ImGui::End();
 
     RenderPreferencesWindow();
+}
+
+void EditorApplication::RenderTitleBar()
+{
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse |
+                             ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                             ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar |
+                             ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+
+    ImGui::SetNextWindowPos(viewport->WorkPos);
+    ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x, TITLE_BAR_HEIGHT));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 4.0f));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.15f, 0.15f, 0.18f, 1.0f));
+
+    ImGui::Begin("##TitleBar", nullptr, flags);
+    ImGui::PopStyleVar(3);
+    ImGui::PopStyleColor();
+
+    ImGui::Text("Ford Editor");
+
+    ImGui::SameLine(viewport->WorkSize.x - 120.0f);
+
+    Window* w = GetWindow();
+    if (w)
+    {
+        if (ImGui::Button("_", ImVec2(36, -1)))
+            w->Minimize();
+        ImGui::SameLine();
+        if (w->IsMaximized())
+        {
+            if (ImGui::Button("[]", ImVec2(36, -1)))
+                w->Restore();
+        }
+        else
+        {
+            if (ImGui::Button("[]", ImVec2(36, -1)))
+                w->Maximize();
+        }
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.2f, 0.2f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.8f, 0.3f, 0.3f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.9f, 0.4f, 0.4f, 1.0f));
+        if (ImGui::Button("X", ImVec2(36, -1)))
+            w->RequestClose();
+        ImGui::PopStyleColor(3);
+    }
+
+    ImGui::End();
 }
 
 void EditorApplication::RenderPreferencesWindow()

@@ -14,6 +14,7 @@ struct WindowSpec
     int width = 1280;
     int height = 720;
     std::string title = "Ford Engine";
+    bool decorated = true; // false = frameless, for custom title bar
 };
 
 class FDE_API Window
@@ -28,6 +29,11 @@ class FDE_API Window
     void OnUpdate();
     void SwapBuffers();
     void RequestClose();
+    void Minimize();
+    void Maximize();
+    void Restore();
+    bool IsMaximized() const;
+    void ProcessTitleBarDrag(float titleBarHeight, float excludeRightWidth = 0.0f);
     bool ShouldClose() const;
     bool IsValid() const { return m_window != nullptr; }
 

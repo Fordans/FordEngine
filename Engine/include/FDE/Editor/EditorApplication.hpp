@@ -13,6 +13,7 @@ class FDE_API EditorApplication : public Application
   public:
     EditorApplication();
     ~EditorApplication();
+    static constexpr float TITLE_BAR_HEIGHT = 28.0f;
 
   protected:
     WindowSpec GetWindowSpec() const override;
@@ -21,6 +22,7 @@ class FDE_API EditorApplication : public Application
   private:
     bool Initialize();
     void RenderMainUI();
+    void RenderTitleBar();
     void RenderPreferencesWindow();
 
   private:

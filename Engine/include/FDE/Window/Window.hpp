@@ -26,14 +26,17 @@ class FDE_API Window
     Window& operator=(const Window&) = delete;
 
     void OnUpdate();
+    void SwapBuffers();
     bool ShouldClose() const;
     bool IsValid() const { return m_window != nullptr; }
 
     int GetWidth() const { return m_width; }
     int GetHeight() const { return m_height; }
+    void GetFramebufferSize(int& width, int& height) const;
     const std::string& GetTitle() const { return m_title; }
 
     void* GetNativeWindow() const;
+    GLFWwindow* GetGLFWWindow() const;
 
   private:
     struct GLFWwindow* m_window = nullptr;

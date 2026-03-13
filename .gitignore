@@ -47,7 +47,5 @@ cmake_install.cmake
 Thumbs.db
 desktop.ini
 
-# ThirdParty: 若用 FetchContent 下载到 build，已忽略；submodule 正常追踪
-
 # Impublished
-PROJECT_STRUCTURE.md
+DEVLOG.md

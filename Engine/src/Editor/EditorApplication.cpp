@@ -1,9 +1,47 @@
 #include "FDE/Editor/EditorApplication.hpp"
 #include "FDE/Editor/EditorPreferences.hpp"
 #include "imgui.h"
+#include "imgui_impl_opengl3.h"
+#include "imgui_impl_opengl3_loader.h"
+#include "stb_image.h"
+#include <filesystem>
+#include <cstdint>
+
+#if defined(_WIN32)
+#include <windows.h>
+#endif
 
 namespace FDE
 {
+
+static std::string GetExecutableDirectory()
+{
+#if defined(_WIN32)
+    char path[MAX_PATH];
+    if (GetModuleFileNameA(nullptr, path, MAX_PATH) == 0)
+        return {};
+    std::filesystem::path p(path);
+    return p.parent_path().string();
+#else
+    return {};
+#endif
+}
+
+static std::string ResolveIconPath(const std::string& baseName)
+{
+    namespace fs = std::filesystem;
+    std::string cwdPath = "Resources/" + baseName;
+    if (fs::exists(cwdPath))
+        return fs::absolute(cwdPath).string();
+    std::string exeDir = GetExecutableDirectory();
+    if (!exeDir.empty())
+    {
+        std::string exePath = exeDir + "/Resources/" + baseName;
+        if (fs::exists(exePath))
+            return exePath;
+    }
+    return {};
+}
 
 EditorApplication::EditorApplication() : m_preferences(std::make_unique<EditorPreferences>())
 {
@@ -14,6 +52,34 @@ EditorApplication::EditorApplication() : m_preferences(std::make_unique<EditorPr
 }
 
 EditorApplication::~EditorApplication() = default;
+
+void EditorApplication::LoadTitleBarIcon()
+{
+    if (m_titleBarIconTexture)
+        return;
+
+    std::string path = ResolveIconPath("FE.png");
+    if (path.empty())
+        return;
+
+    int w, h, channels;
+    unsigned char* data = stbi_load(path.c_str(), &w, &h, &channels, 4);
+    if (!data)
+        return;
+
+    GLuint texId = 0;
+    glGenTextures(1, &texId);
+    glBindTexture(GL_TEXTURE_2D, texId);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    stbi_image_free(data);
+
+    m_titleBarIconTexture = reinterpret_cast<void*>(static_cast<intptr_t>(texId));
+    m_titleBarIconWidth = static_cast<float>(w);
+    m_titleBarIconHeight = static_cast<float>(h);
+}
 
 WindowSpec EditorApplication::GetWindowSpec() const
 {
@@ -28,9 +94,9 @@ WindowSpec EditorApplication::GetWindowSpec() const
 void EditorApplication::OnUpdate()
 {
     RenderMainUI();
-    // Title bar drag: exclude right 120px (minimize/maximize/close buttons)
+    // Title bar drag: exclude right button area
     if (Window* w = GetWindow(); w)
-        w->ProcessTitleBarDrag(TITLE_BAR_HEIGHT, 120.0f);
+        w->ProcessTitleBarDrag(TITLE_BAR_HEIGHT, TITLE_BAR_BUTTON_AREA_WIDTH);
 }
 
 void EditorApplication::RenderMainUI()
@@ -100,40 +166,71 @@ void EditorApplication::RenderTitleBar()
     ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x, TITLE_BAR_HEIGHT));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 4.0f));
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.15f, 0.15f, 0.18f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 6.0f));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.08f, 0.08f, 0.08f, 1.0f));
 
     ImGui::Begin("##TitleBar", nullptr, flags);
     ImGui::PopStyleVar(3);
     ImGui::PopStyleColor();
 
-    ImGui::Text("Ford Editor");
+    LoadTitleBarIcon();
+    if (m_titleBarIconTexture && m_titleBarIconWidth > 0 && m_titleBarIconHeight > 0)
+    {
+        float iconSize = TITLE_BAR_HEIGHT - 10.0f;
+        ImGui::Image(m_titleBarIconTexture, ImVec2(iconSize, iconSize));
+        ImGui::SameLine();
+    }
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 12.0f);
+    if (ImFont* titleFont = GetImGuiContext() ? GetImGuiContext()->GetTitleFont() : nullptr)
+    {
+        ImGui::PushFont(titleFont);
+        ImGui::Text("v0.1.0");
+        ImGui::PopFont();
+    }
+    else
+    {
+        ImGui::Text("v0.1.0");
+    }
 
-    ImGui::SameLine(viewport->WorkSize.x - 120.0f);
+    ImGui::SameLine(viewport->WorkSize.x - TITLE_BAR_BUTTON_AREA_WIDTH);
 
     Window* w = GetWindow();
     if (w)
     {
-        if (ImGui::Button("_", ImVec2(36, -1)))
+        // 默认无背景，仅悬停/点击时显示；无描边
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+
+        ImVec4 btnIdle = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+        ImVec4 btnHover = ImVec4(0.35f, 0.35f, 0.38f, 0.8f);
+        ImVec4 btnActive = ImVec4(0.45f, 0.45f, 0.48f, 1.0f);
+
+        ImGui::PushStyleColor(ImGuiCol_Button, btnIdle);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, btnHover);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, btnActive);
+        if (ImGui::Button("z", ImVec2(TITLE_BAR_BUTTON_WIDTH, -1)))
             w->Minimize();
         ImGui::SameLine();
         if (w->IsMaximized())
         {
-            if (ImGui::Button("[]", ImVec2(36, -1)))
+            if (ImGui::Button("O", ImVec2(TITLE_BAR_BUTTON_WIDTH, -1)))
                 w->Restore();
         }
         else
         {
-            if (ImGui::Button("[]", ImVec2(36, -1)))
+            if (ImGui::Button("O", ImVec2(TITLE_BAR_BUTTON_WIDTH, -1)))
                 w->Maximize();
         }
+        ImGui::PopStyleColor(3);
+
         ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.2f, 0.2f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.8f, 0.3f, 0.3f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.9f, 0.4f, 0.4f, 1.0f));
-        if (ImGui::Button("X", ImVec2(36, -1)))
+        ImGui::PushStyleColor(ImGuiCol_Button, btnIdle);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.55f, 0.28f, 0.65f, 0.9f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.65f, 0.35f, 0.75f, 1.0f));
+        if (ImGui::Button("X", ImVec2(TITLE_BAR_BUTTON_WIDTH, -1)))
             w->RequestClose();
         ImGui::PopStyleColor(3);
+
+        ImGui::PopStyleVar();
     }
 
     ImGui::End();
@@ -145,8 +242,8 @@ void EditorApplication::RenderPreferencesWindow()
         return;
 
     static bool s_wasOpen = false;
-    static int s_width = 1600;
-    static int s_height = 900;
+    static int s_width = 1920;
+    static int s_height = 1080;
 
     if (m_showPreferences && !s_wasOpen)
     {

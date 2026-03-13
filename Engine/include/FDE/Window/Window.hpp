@@ -15,6 +15,7 @@ struct WindowSpec
     int height = 720;
     std::string title = "Ford Engine";
     bool decorated = true; // false = frameless, for custom title bar
+    std::string iconPath;  // optional; path to PNG for window icon (taskbar, title bar)
 };
 
 class FDE_API Window

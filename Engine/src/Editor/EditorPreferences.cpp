@@ -12,8 +12,8 @@ struct EditorPreferences::ConfigImpl
 
 namespace
 {
-constexpr int DEFAULT_WIDTH = 1600;
-constexpr int DEFAULT_HEIGHT = 900;
+constexpr int DEFAULT_WIDTH = 1920;
+constexpr int DEFAULT_HEIGHT = 1080;
 constexpr const char* FILTER_WINDOW = "Window";
 constexpr const char* KEY_WIDTH = "Width";
 constexpr const char* KEY_HEIGHT = "Height";

@@ -3,6 +3,7 @@
 #include "FDE/Export.hpp"
 
 struct GLFWwindow;
+struct ImFont;
 
 namespace FDE
 {
@@ -24,8 +25,11 @@ class FDE_API ImGuiContext
 
     bool IsInitialized() const { return m_initialized; }
 
+    ImFont* GetTitleFont() const { return m_titleFont; }
+
   private:
     bool m_initialized = false;
+    ImFont* m_titleFont = nullptr;
 };
 
 } // namespace FDE

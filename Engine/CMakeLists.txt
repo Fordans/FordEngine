@@ -4,6 +4,7 @@ target_compile_definitions(FordEngine PRIVATE FordEngine_EXPORTS)
 target_sources(FordEngine PRIVATE 
     src/Core/Application.cpp
     src/Core/Log.cpp
+    src/Core/StbImage.cpp
     src/ImGui/ImGuiContext.cpp
     src/Window/Window.cpp
     src/Editor/EditorApplication.cpp
@@ -20,6 +21,7 @@ target_include_directories(FordEngine
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_SOURCE_DIR}/ThirdParty/fds
+        ${CMAKE_SOURCE_DIR}/ThirdParty/stb
 )
 
 target_link_libraries(FordEngine

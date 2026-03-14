@@ -1,4 +1,5 @@
 #include "FDE/Core/Application.hpp"
+#include "FDE/Core/Event.hpp"
 #include "FDE/Core/Log.hpp"
 #include "FDE/ImGui/ImGuiContext.hpp"
 #include <GLFW/glfw3.h>
@@ -26,6 +27,10 @@ void Application::Run()
         m_window->OnUpdate();
         m_imgui->BeginFrame();
 
+        for (auto& layer : m_layerStack)
+        {
+            layer->OnUpdate();
+        }
         OnUpdate();
 
         int fb_width, fb_height;
@@ -42,6 +47,16 @@ void Application::Run()
     }
 
     m_imgui->Shutdown();
+}
+
+void Application::DispatchEvent(Event& event)
+{
+    for (auto it = m_layerStack.rbegin(); it != m_layerStack.rend(); ++it)
+    {
+        if (event.IsHandled())
+            break;
+        (*it)->OnEvent(event);
+    }
 }
 
 } // namespace FDE

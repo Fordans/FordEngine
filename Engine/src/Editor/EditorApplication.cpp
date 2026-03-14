@@ -113,7 +113,6 @@ void EditorApplication::RenderMainUI()
     ImGui::SetNextWindowPos(mainPos);
     ImGui::SetNextWindowSize(mainSize);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 
     ImGuiWindowFlags window_flags =
@@ -122,10 +121,12 @@ void EditorApplication::RenderMainUI()
         ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
     ImGui::Begin("MainWindow", nullptr, window_flags);
-    ImGui::PopStyleVar(3);
+    ImGui::PopStyleVar(2);
 
     ImGuiID dockspace_id = ImGui::GetID("MainDockspace");
     ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
+
+    RenderPreferencesWindow(dockspace_id);
 
     if (ImGui::BeginMenuBar())
     {
@@ -149,8 +150,6 @@ void EditorApplication::RenderMainUI()
     }
 
     ImGui::End();
-
-    RenderPreferencesWindow();
 }
 
 void EditorApplication::RenderTitleBar()
@@ -236,7 +235,7 @@ void EditorApplication::RenderTitleBar()
     ImGui::End();
 }
 
-void EditorApplication::RenderPreferencesWindow()
+void EditorApplication::RenderPreferencesWindow(ImGuiID dockspace_id)
 {
     if (!m_showPreferences)
         return;
@@ -254,7 +253,7 @@ void EditorApplication::RenderPreferencesWindow()
     if (!m_showPreferences)
         s_wasOpen = false;
 
-    ImGui::SetNextWindowSize(ImVec2(400, 0), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowDockID(dockspace_id, ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Preferences", &m_showPreferences))
     {
         if (ImGui::CollapsingHeader("Window", ImGuiTreeNodeFlags_DefaultOpen))

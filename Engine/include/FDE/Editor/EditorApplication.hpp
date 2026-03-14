@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FDE/FDE.hpp"
+#include "imgui.h"
 #include <memory>
 
 namespace FDE
@@ -26,7 +27,7 @@ class FDE_API EditorApplication : public Application
     void LoadTitleBarIcon();
     void RenderMainUI();
     void RenderTitleBar();
-    void RenderPreferencesWindow();
+    void RenderPreferencesWindow(ImGuiID dockspace_id);
 
   private:
     std::unique_ptr<EditorPreferences> m_preferences;

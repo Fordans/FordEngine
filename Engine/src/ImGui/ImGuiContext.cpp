@@ -60,10 +60,10 @@ bool ImGuiContext::Init(GLFWwindow* window)
     style.GrabRounding = 0.0f;
     style.TabRounding = 0.0f;
 
-    // 金属感浮雕：边框高光 + 阴影
-    style.WindowBorderSize = 1.0f;
-    style.ChildBorderSize = 1.0f;
-    style.PopupBorderSize = 1.0f;
+    // 金属感浮雕：边框高光 + 阴影，加粗窗口边缘描边便于区分
+    style.WindowBorderSize = 2.0f;
+    style.ChildBorderSize = 2.0f;
+    style.PopupBorderSize = 2.0f;
     style.FrameBorderSize = 1.0f;
     style.TabBorderSize = 1.0f;
 

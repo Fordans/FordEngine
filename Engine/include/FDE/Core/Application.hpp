@@ -21,6 +21,8 @@ class FDE_API Application
 
     virtual void Run();
     virtual void OnUpdate() {}
+    virtual void OnWindowCreated() {}
+    virtual void OnRunEnd() {}
 
     Window* GetWindow() { return m_window.get(); }
     const Window* GetWindow() const { return m_window.get(); }

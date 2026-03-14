@@ -21,6 +21,8 @@ class FDE_API EditorApplication : public Application
   protected:
     WindowSpec GetWindowSpec() const override;
     void OnUpdate() override;
+    void OnWindowCreated() override;
+    void OnRunEnd() override;
 
   private:
     bool Initialize();

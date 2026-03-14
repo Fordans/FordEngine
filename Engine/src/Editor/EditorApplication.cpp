@@ -91,6 +91,18 @@ WindowSpec EditorApplication::GetWindowSpec() const
     return spec;
 }
 
+void EditorApplication::OnWindowCreated()
+{
+    if (m_preferences->GetMaximized() && GetWindow())
+        GetWindow()->Maximize();
+}
+
+void EditorApplication::OnRunEnd()
+{
+    if (Window* w = GetWindow())
+        m_preferences->SetMaximized(w->IsMaximized());
+}
+
 void EditorApplication::OnUpdate()
 {
     RenderMainUI();
@@ -223,8 +235,8 @@ void EditorApplication::RenderTitleBar()
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button, btnIdle);
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.55f, 0.28f, 0.65f, 0.9f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.65f, 0.35f, 0.75f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.42f, 0.38f, 0.40f, 0.9f));  // 金属暗色
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.48f, 0.44f, 0.46f, 1.0f));
         if (ImGui::Button("X", ImVec2(TITLE_BAR_BUTTON_WIDTH, -1)))
             w->RequestClose();
         ImGui::PopStyleColor(3);
@@ -243,11 +255,13 @@ void EditorApplication::RenderPreferencesWindow(ImGuiID dockspace_id)
     static bool s_wasOpen = false;
     static int s_width = 1920;
     static int s_height = 1080;
+    static bool s_maximized = false;
 
     if (m_showPreferences && !s_wasOpen)
     {
         s_width = m_preferences->GetWindowWidth();
         s_height = m_preferences->GetWindowHeight();
+        s_maximized = m_preferences->GetMaximized();
         s_wasOpen = true;
     }
     if (!m_showPreferences)
@@ -268,6 +282,11 @@ void EditorApplication::RenderPreferencesWindow(ImGuiID dockspace_id)
 
             if (ImGui::Button("Apply"))
                 m_preferences->SetWindowSize(s_width, s_height);
+            ImGui::SameLine();
+            ImGui::TextDisabled("(Takes effect on next launch)");
+
+            if (ImGui::Checkbox("Start maximized", &s_maximized))
+                m_preferences->SetMaximized(s_maximized);
             ImGui::SameLine();
             ImGui::TextDisabled("(Takes effect on next launch)");
         }

@@ -17,6 +17,7 @@ constexpr int DEFAULT_HEIGHT = 1080;
 constexpr const char* FILTER_WINDOW = "Window";
 constexpr const char* KEY_WIDTH = "Width";
 constexpr const char* KEY_HEIGHT = "Height";
+constexpr const char* KEY_MAXIMIZED = "Maximized";
 } // namespace
 
 EditorPreferences::EditorPreferences() : m_configPath("FordEditor.cfg"), m_impl(std::make_unique<ConfigImpl>(m_configPath))
@@ -53,6 +54,23 @@ void EditorPreferences::SetWindowSize(int width, int height)
 {
     m_impl->config.setConfig(FILTER_WINDOW, KEY_WIDTH, width);
     m_impl->config.setConfig(FILTER_WINDOW, KEY_HEIGHT, height);
+}
+
+bool EditorPreferences::GetMaximized() const
+{
+    try
+    {
+        return m_impl->config.getConfig<bool>(FILTER_WINDOW, KEY_MAXIMIZED);
+    }
+    catch (const std::exception&)
+    {
+        return false;
+    }
+}
+
+void EditorPreferences::SetMaximized(bool maximized)
+{
+    m_impl->config.setConfig(FILTER_WINDOW, KEY_MAXIMIZED, maximized);
 }
 
 } // namespace FDE

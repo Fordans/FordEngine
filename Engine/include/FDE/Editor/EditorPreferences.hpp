@@ -20,6 +20,8 @@ class FDE_API EditorPreferences
     int GetWindowWidth() const;
     int GetWindowHeight() const;
     void SetWindowSize(int width, int height);
+    bool GetMaximized() const;
+    void SetMaximized(bool maximized);
 
     const std::string& GetConfigPath() const { return m_configPath; }
 

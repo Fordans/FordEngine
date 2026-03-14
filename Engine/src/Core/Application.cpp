@@ -22,6 +22,8 @@ void Application::Run()
         return;
     }
 
+    OnWindowCreated();
+
     while (!m_window->ShouldClose())
     {
         m_window->OnUpdate();
@@ -46,6 +48,7 @@ void Application::Run()
         m_window->SwapBuffers();
     }
 
+    OnRunEnd();
     m_imgui->Shutdown();
 }
 

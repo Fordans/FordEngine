@@ -2,6 +2,7 @@
 #include "FDE/Core/Event.hpp"
 #include "FDE/Core/Log.hpp"
 #include "FDE/ImGui/ImGuiContext.hpp"
+#include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
 namespace FDE
@@ -12,6 +13,12 @@ void Application::Run()
     m_window = std::make_unique<Window>(GetWindowSpec());
     if (!m_window->IsValid())
     {
+        return;
+    }
+
+    if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)))
+    {
+        FDE_LOG_CLIENT_ERROR("Failed to initialize GLAD");
         return;
     }
 

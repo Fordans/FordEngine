@@ -30,6 +30,7 @@ target_link_libraries(FordEngine
     PUBLIC
         spdlog::spdlog
         glfw
+        glad
         imgui
 )
 

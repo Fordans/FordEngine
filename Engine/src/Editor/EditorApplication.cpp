@@ -1,8 +1,8 @@
 #include "FDE/Editor/EditorApplication.hpp"
 #include "FDE/Editor/EditorPreferences.hpp"
+#include <glad/glad.h>
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
-#include "imgui_impl_opengl3_loader.h"
 #include "stb_image.h"
 #include <filesystem>
 #include <cstdint>

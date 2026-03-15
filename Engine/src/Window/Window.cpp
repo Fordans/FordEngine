@@ -1,4 +1,7 @@
 #include "FDE/Window/Window.hpp"
+#include "FDE/Core/Events/KeyEvent.hpp"
+#include "FDE/Core/Events/MouseEvent.hpp"
+#include "FDE/Core/Events/WindowEvent.hpp"
 #include "FDE/Core/Log.hpp"
 #include <GLFW/glfw3.h>
 #include "stb_image.h"
@@ -46,6 +49,98 @@ static std::string ResolveIconPath(const std::string& baseName)
 static void GlfwErrorCallback(int error, const char* description)
 {
     FDE_LOG_CLIENT_ERROR("GLFW Error {}: {}", error, description);
+}
+
+static void GlfwKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+    (void)scancode;
+    (void)mods;
+    auto* w = static_cast<Window*>(glfwGetWindowUserPointer(window));
+    if (!w)
+        return;
+    if (action == GLFW_PRESS)
+    {
+        KeyPressedEvent e(key, 0);
+        w->DispatchEventToCallback(e);
+    }
+    else if (action == GLFW_RELEASE)
+    {
+        KeyReleasedEvent e(key);
+        w->DispatchEventToCallback(e);
+    }
+}
+
+static void GlfwMouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
+{
+    (void)mods;
+    auto* w = static_cast<Window*>(glfwGetWindowUserPointer(window));
+    if (!w)
+        return;
+    double x, y;
+    glfwGetCursorPos(window, &x, &y);
+    if (action == GLFW_PRESS)
+    {
+        MouseButtonPressedEvent e(button, static_cast<float>(x), static_cast<float>(y));
+        w->DispatchEventToCallback(e);
+    }
+    else if (action == GLFW_RELEASE)
+    {
+        MouseButtonReleasedEvent e(button, static_cast<float>(x), static_cast<float>(y));
+        w->DispatchEventToCallback(e);
+    }
+}
+
+static void GlfwCursorPosCallback(GLFWwindow* window, double x, double y)
+{
+    auto* w = static_cast<Window*>(glfwGetWindowUserPointer(window));
+    if (!w)
+        return;
+    MouseMovedEvent e(static_cast<float>(x), static_cast<float>(y));
+    w->DispatchEventToCallback(e);
+}
+
+static void GlfwScrollCallback(GLFWwindow* window, double xOffset, double yOffset)
+{
+    auto* w = static_cast<Window*>(glfwGetWindowUserPointer(window));
+    if (!w)
+        return;
+    MouseScrolledEvent e(static_cast<float>(xOffset), static_cast<float>(yOffset));
+    w->DispatchEventToCallback(e);
+}
+
+static void GlfwWindowFocusCallback(GLFWwindow* window, int focused)
+{
+    auto* w = static_cast<Window*>(glfwGetWindowUserPointer(window));
+    if (!w)
+        return;
+    if (focused)
+    {
+        WindowFocusEvent e;
+        w->DispatchEventToCallback(e);
+    }
+    else
+    {
+        WindowLostFocusEvent e;
+        w->DispatchEventToCallback(e);
+    }
+}
+
+static void GlfwWindowCloseCallback(GLFWwindow* window)
+{
+    auto* w = static_cast<Window*>(glfwGetWindowUserPointer(window));
+    if (!w)
+        return;
+    WindowCloseEvent e;
+    w->DispatchEventToCallback(e);
+}
+
+static void GlfwFramebufferSizeCallback(GLFWwindow* window, int width, int height)
+{
+    auto* w = static_cast<Window*>(glfwGetWindowUserPointer(window));
+    if (!w)
+        return;
+    WindowResizeEvent e(width, height);
+    w->DispatchEventToCallback(e);
 }
 
 Window::Window(const WindowSpec& spec)
@@ -112,7 +207,30 @@ Window::Window(const WindowSpec& spec)
             stbi_image_free(iconData);
         }
     }
+
+    glfwSetWindowUserPointer(m_window, this);
+    InitCallbacks();
 }
+
+void Window::InitCallbacks()
+{
+    if (!m_window)
+        return;
+    glfwSetKeyCallback(m_window, GlfwKeyCallback);
+    glfwSetMouseButtonCallback(m_window, GlfwMouseButtonCallback);
+    glfwSetCursorPosCallback(m_window, GlfwCursorPosCallback);
+    glfwSetScrollCallback(m_window, GlfwScrollCallback);
+    glfwSetWindowFocusCallback(m_window, GlfwWindowFocusCallback);
+    glfwSetWindowCloseCallback(m_window, GlfwWindowCloseCallback);
+    glfwSetFramebufferSizeCallback(m_window, GlfwFramebufferSizeCallback);
+}
+
+void Window::DispatchEventToCallback(Event& e)
+{
+    if (m_eventCallback)
+        m_eventCallback(e);
+}
+
 
 Window::~Window()
 {

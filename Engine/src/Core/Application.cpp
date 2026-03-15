@@ -2,6 +2,7 @@
 #include "FDE/Core/Event.hpp"
 #include "FDE/Core/Log.hpp"
 #include "FDE/ImGui/ImGuiContext.hpp"
+#include "FDE/Window/Window.hpp"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
@@ -15,6 +16,8 @@ void Application::Run()
     {
         return;
     }
+
+    m_window->SetEventCallback([this](Event& e) { DispatchEvent(e); });
 
     if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)))
     {

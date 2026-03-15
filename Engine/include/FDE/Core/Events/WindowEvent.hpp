@@ -28,4 +28,18 @@ class FDE_API WindowResizeEvent : public Event
     int m_height;
 };
 
+class FDE_API WindowFocusEvent : public Event
+{
+  public:
+    FDE_EVENT_TYPE(WindowFocus)
+    FDE_EVENT_CATEGORY(EventCategoryApplication)
+};
+
+class FDE_API WindowLostFocusEvent : public Event
+{
+  public:
+    FDE_EVENT_TYPE(WindowLostFocus)
+    FDE_EVENT_CATEGORY(EventCategoryApplication)
+};
+
 } // namespace FDE

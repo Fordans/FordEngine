@@ -1,5 +1,6 @@
 #include "FDE/Editor/EditorApplication.hpp"
 #include "FDE/Editor/EditorPreferences.hpp"
+#include "FDE/ImGui/ImGuiLayer.hpp"
 #include <glad/glad.h>
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
@@ -93,6 +94,8 @@ WindowSpec EditorApplication::GetWindowSpec() const
 
 void EditorApplication::OnWindowCreated()
 {
+    GetLayerStack().PushOverlay(std::make_unique<ImGuiLayer>());
+
     if (m_preferences->GetMaximized() && GetWindow())
         GetWindow()->Maximize();
 }

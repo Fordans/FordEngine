@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FDE/Export.hpp"
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -8,6 +9,8 @@ struct GLFWwindow;
 
 namespace FDE
 {
+
+class Event;
 
 struct WindowSpec
 {
@@ -46,11 +49,20 @@ class FDE_API Window
     void* GetNativeWindow() const;
     GLFWwindow* GetGLFWWindow() const;
 
+    using EventCallbackFn = std::function<void(Event&)>;
+    void SetEventCallback(const EventCallbackFn& callback) { m_eventCallback = callback; }
+
+  public:
+    void DispatchEventToCallback(Event& e);
+
   private:
+    void InitCallbacks();
+
     struct GLFWwindow* m_window = nullptr;
     int m_width = 0;
     int m_height = 0;
     std::string m_title;
+    EventCallbackFn m_eventCallback;
 };
 
 } // namespace FDE

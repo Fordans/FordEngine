@@ -8,6 +8,7 @@ target_sources(FordEngine PRIVATE
     src/Core/Log.cpp
     src/Core/StbImage.cpp
     src/ImGui/ImGuiContext.cpp
+    src/ImGui/ImGuiLayer.cpp
     src/Window/Window.cpp
     src/Editor/EditorApplication.cpp
     src/Editor/EditorPreferences.cpp

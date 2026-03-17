@@ -1,38 +1,23 @@
 #include "FDE/Renderer/VertexBuffer.hpp"
-#include <glad/glad.h>
+#include "FDE/Renderer/OpenGL/OpenGLVertexBuffer.hpp"
+#include "FDE/Renderer/RenderCommand.hpp"
+#include "FDE/Renderer/GraphicsAPI.hpp"
+#include "FDE/Core/Log.hpp"
+#include <memory>
 
 namespace FDE
 {
 
-VertexBuffer::VertexBuffer(const void* data, size_t size)
+std::shared_ptr<VertexBuffer> VertexBuffer::Create(const void* data, size_t size)
 {
-    glGenBuffers(1, &m_id);
-    glBindBuffer(GL_ARRAY_BUFFER, m_id);
-    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(size), data, GL_STATIC_DRAW);
-}
-
-VertexBuffer::~VertexBuffer()
-{
-    if (m_id)
+    switch (RenderCommand::GetAPI())
     {
-        glDeleteBuffers(1, &m_id);
+    case GraphicsAPI::OpenGL:
+        return std::make_shared<OpenGLVertexBuffer>(data, size);
+    default:
+        FDE_LOG_CLIENT_ERROR("Unsupported graphics API for VertexBuffer creation");
+        return nullptr;
     }
-}
-
-void VertexBuffer::Bind() const
-{
-    glBindBuffer(GL_ARRAY_BUFFER, m_id);
-}
-
-void VertexBuffer::Unbind() const
-{
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-}
-
-void VertexBuffer::SetData(const void* data, size_t size)
-{
-    glBindBuffer(GL_ARRAY_BUFFER, m_id);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(size), data);
 }
 
 } // namespace FDE

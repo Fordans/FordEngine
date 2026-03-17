@@ -2,39 +2,34 @@
 
 #include "FDE/Export.hpp"
 #include <cstdint>
+#include <memory>
 
 namespace FDE
 {
 
+/// Abstract interface for framebuffer/viewport resources.
+/// Use Viewport::Create() to obtain a backend-specific implementation.
 class FDE_API Viewport
 {
   public:
-    Viewport(uint32_t width, uint32_t height);
-    ~Viewport();
+    virtual ~Viewport() = default;
 
-    Viewport(const Viewport&) = delete;
-    Viewport& operator=(const Viewport&) = delete;
+    virtual void Resize(uint32_t width, uint32_t height) = 0;
+    virtual void Bind() = 0;
+    virtual void Unbind() = 0;
 
-    void Resize(uint32_t width, uint32_t height);
+    virtual uint32_t GetWidth() const = 0;
+    virtual uint32_t GetHeight() const = 0;
+    /// Backend-specific texture ID for ImGui/UI (e.g. OpenGL texture ID).
+    virtual void* GetColorAttachmentTextureId() const = 0;
 
-    void Bind();
-    void Unbind();
+    virtual bool IsValid() const = 0;
 
-    uint32_t GetWidth() const { return m_width; }
-    uint32_t GetHeight() const { return m_height; }
-    uint32_t GetColorAttachmentId() const { return m_colorAttachmentId; }
-    void* GetColorAttachmentTextureId() const;
+    /// Factory: creates a viewport for the active graphics API.
+    static std::unique_ptr<Viewport> Create(uint32_t width, uint32_t height);
 
-    bool IsValid() const { return m_framebufferId != 0; }
-
-  private:
-    void Invalidate();
-
-    uint32_t m_framebufferId = 0;
-    uint32_t m_colorAttachmentId = 0;
-    uint32_t m_depthAttachmentId = 0;
-    uint32_t m_width = 0;
-    uint32_t m_height = 0;
+  protected:
+    Viewport() = default;
 };
 
 } // namespace FDE

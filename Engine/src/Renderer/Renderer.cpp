@@ -1,6 +1,8 @@
 #include "FDE/Renderer/Renderer.hpp"
+#include "FDE/Renderer/RenderCommand.hpp"
+#include "FDE/Renderer/GraphicsAPI.hpp"
 #include "FDE/Renderer/Shader.hpp"
-#include <glad/glad.h>
+#include "FDE/Renderer/VertexArray.hpp"
 #include <glm/gtc/matrix_transform.hpp>
 #include <memory>
 
@@ -68,10 +70,12 @@ Shader* s_currentShader = nullptr;
 
 } // namespace
 
-void Renderer::Init()
+void Renderer::Init(GraphicsAPI api)
 {
-    s_defaultShader = std::make_unique<Shader>(s_defaultVertexShader, s_defaultFragmentShader);
-    s_simpleShader = std::make_unique<Shader>(s_simpleVertexShader, s_simpleFragmentShader);
+    RenderCommand::Init(api);
+
+    s_defaultShader = Shader::Create(s_defaultVertexShader, s_defaultFragmentShader);
+    s_simpleShader = Shader::Create(s_simpleVertexShader, s_simpleFragmentShader);
     s_currentShader = s_defaultShader.get();
 }
 
@@ -80,21 +84,23 @@ void Renderer::Shutdown()
     s_defaultShader.reset();
     s_simpleShader.reset();
     s_currentShader = nullptr;
+
+    RenderCommand::Shutdown();
 }
 
 void Renderer::SetClearColor(float r, float g, float b, float a)
 {
-    glClearColor(r, g, b, a);
+    RenderCommand::SetClearColor(r, g, b, a);
 }
 
 void Renderer::Clear()
 {
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    RenderCommand::Clear();
 }
 
 void Renderer::SetViewport(int x, int y, int width, int height)
 {
-    glViewport(x, y, width, height);
+    RenderCommand::SetViewport(x, y, width, height);
 }
 
 void Renderer::DrawIndexed(const std::shared_ptr<VertexArray>& vertexArray, uint32_t indexCount)
@@ -102,13 +108,8 @@ void Renderer::DrawIndexed(const std::shared_ptr<VertexArray>& vertexArray, uint
     if (!vertexArray || !s_currentShader)
         return;
 
-    uint32_t count = indexCount > 0 ? indexCount : vertexArray->GetIndexCount();
-    if (count == 0)
-        return;
-
     s_currentShader->Bind();
-    vertexArray->Bind();
-    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(count), GL_UNSIGNED_INT, nullptr);
+    RenderCommand::DrawIndexed(vertexArray, indexCount);
 }
 
 void Renderer::DrawTriangles(uint32_t vertexCount)
@@ -117,7 +118,7 @@ void Renderer::DrawTriangles(uint32_t vertexCount)
         return;
 
     s_currentShader->Bind();
-    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertexCount));
+    RenderCommand::DrawTriangles(vertexCount);
 }
 
 void Renderer::SetMVP(const glm::mat4& model, const glm::mat4& view, const glm::mat4& projection)

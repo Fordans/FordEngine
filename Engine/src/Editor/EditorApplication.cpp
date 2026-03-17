@@ -70,12 +70,15 @@ void CreateTriangleMesh(std::shared_ptr<VertexArray>& outVAO)
     };
     uint32_t indices[] = {0, 1, 2};
 
-    auto vbo = std::make_shared<VertexBuffer>(vertices, sizeof(vertices));
+    auto vbo = VertexBuffer::Create(vertices, sizeof(vertices));
     BufferLayout layout = {{ShaderDataType::Float3, "a_Position"}, {ShaderDataType::Float3, "a_Color"}};
 
-    outVAO = std::make_shared<VertexArray>();
-    outVAO->AddVertexBuffer(vbo, layout);
-    outVAO->SetIndexBuffer(indices, 3);
+    outVAO = VertexArray::Create();
+    if (outVAO && vbo)
+    {
+        outVAO->AddVertexBuffer(vbo, layout);
+        outVAO->SetIndexBuffer(indices, 3);
+    }
 }
 
 } // namespace
@@ -350,7 +353,7 @@ void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
             if (!m_sceneViewport || m_sceneViewport->GetWidth() != width || m_sceneViewport->GetHeight() != height)
             {
                 if (!m_sceneViewport)
-                    m_sceneViewport = std::make_unique<Viewport>(width, height);
+                    m_sceneViewport = Viewport::Create(width, height);
                 else
                     m_sceneViewport->Resize(width, height);
             }

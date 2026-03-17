@@ -2,37 +2,33 @@
 
 #include "FDE/Export.hpp"
 #include <glm/glm.hpp>
+#include <memory>
 #include <string>
-#include <unordered_map>
 
 namespace FDE
 {
 
+/// Abstract interface for shader programs.
+/// Use Shader::Create() to obtain a backend-specific implementation.
 class FDE_API Shader
 {
   public:
-    Shader(const std::string& vertexSrc, const std::string& fragmentSrc);
-    ~Shader();
+    virtual ~Shader() = default;
 
-    Shader(const Shader&) = delete;
-    Shader& operator=(const Shader&) = delete;
+    virtual void Bind() const = 0;
+    virtual void Unbind() const = 0;
 
-    void Bind() const;
-    void Unbind() const;
+    virtual void SetMat4(const std::string& name, const glm::mat4& value) = 0;
+    virtual void SetVec4(const std::string& name, const glm::vec4& value) = 0;
+    virtual void SetVec3(const std::string& name, const glm::vec3& value) = 0;
+    virtual void SetFloat(const std::string& name, float value) = 0;
+    virtual void SetInt(const std::string& name, int value) = 0;
 
-    void SetMat4(const std::string& name, const glm::mat4& value);
-    void SetVec4(const std::string& name, const glm::vec4& value);
-    void SetVec3(const std::string& name, const glm::vec3& value);
-    void SetFloat(const std::string& name, float value);
-    void SetInt(const std::string& name, int value);
+    /// Factory: creates a shader for the active graphics API.
+    static std::unique_ptr<Shader> Create(const std::string& vertexSrc, const std::string& fragmentSrc);
 
-    unsigned int GetId() const { return m_id; }
-
-  private:
-    int GetUniformLocation(const std::string& name);
-
-    unsigned int m_id = 0;
-    std::unordered_map<std::string, int> m_uniformLocationCache;
+  protected:
+    Shader() = default;
 };
 
 } // namespace FDE

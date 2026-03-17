@@ -13,11 +13,17 @@ target_sources(FordEngine PRIVATE
     src/Editor/EditorApplication.cpp
     src/Editor/EditorPreferences.cpp
     src/Renderer/Camera2D.cpp
+    src/Renderer/RenderCommand.cpp
     src/Renderer/Renderer.cpp
     src/Renderer/Shader.cpp
     src/Renderer/VertexArray.cpp
     src/Renderer/VertexBuffer.cpp
     src/Renderer/Viewport.cpp
+    src/Renderer/OpenGL/OpenGLRendererAPI.cpp
+    src/Renderer/OpenGL/OpenGLShader.cpp
+    src/Renderer/OpenGL/OpenGLVertexArray.cpp
+    src/Renderer/OpenGL/OpenGLVertexBuffer.cpp
+    src/Renderer/OpenGL/OpenGLViewport.cpp
 )
 
 # Precompiled headers (optional, to speed up compilation)

@@ -11,6 +11,7 @@ target_sources(FordEngine PRIVATE
     src/ImGui/ImGuiLayer.cpp
     src/Window/Window.cpp
     src/Editor/EditorApplication.cpp
+    src/Editor/EditorConsole.cpp
     src/Editor/EditorPreferences.cpp
     src/Renderer/Camera2D.cpp
     src/Renderer/RenderCommand.cpp

@@ -1,4 +1,5 @@
 #include "FDE/Editor/EditorApplication.hpp"
+#include "FDE/Editor/EditorConsole.hpp"
 #include "FDE/Editor/EditorPreferences.hpp"
 #include "FDE/ImGui/ImGuiLayer.hpp"
 #include "FDE/Renderer/BufferLayout.hpp"
@@ -126,6 +127,7 @@ WindowSpec EditorApplication::GetWindowSpec() const
 void EditorApplication::OnWindowCreated()
 {
     GetLayerStack().PushOverlay(std::make_unique<ImGuiLayer>());
+    EditorConsole::Initialize();
 
     CreateTriangleMesh(m_triangleVAO);
 
@@ -178,6 +180,8 @@ void EditorApplication::RenderMainUI()
         RenderSceneView(dockspace_id);
     if (m_showPreferences)
         RenderPreferencesWindow(dockspace_id);
+    if (m_showConsole)
+        EditorConsole::Render(dockspace_id);
 
     if (ImGui::BeginMenuBar())
     {
@@ -200,6 +204,7 @@ void EditorApplication::RenderMainUI()
         if (ImGui::BeginMenu("View"))
         {
             ImGui::MenuItem("Scene", nullptr, &m_showScene);
+            ImGui::MenuItem("Console", nullptr, &m_showConsole);
             ImGui::MenuItem("Preferences", nullptr, &m_showPreferences);
             ImGui::EndMenu();
         }

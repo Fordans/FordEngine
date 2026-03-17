@@ -39,6 +39,7 @@ class FDE_API EditorApplication : public Application
     std::unique_ptr<EditorPreferences> m_preferences;
     bool m_showPreferences = false;
     bool m_showScene = true;
+    bool m_showConsole = true;
     void* m_titleBarIconTexture = nullptr;  // ImTextureID / GLuint
     float m_titleBarIconWidth = 0;
     float m_titleBarIconHeight = 0;

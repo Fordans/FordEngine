@@ -7,6 +7,7 @@
 #include <glad/glad.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include "imgui.h"
+#include "FDE/Renderer/Camera2D.hpp"
 #include "imgui_impl_opengl3.h"
 #include "stb_image.h"
 #include <filesystem>
@@ -366,9 +367,8 @@ void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
                 if (m_triangleVAO)
                 {
                     glm::mat4 model = glm::mat4(1.0f);
-                    glm::mat4 view = glm::lookAt(glm::vec3(0, 0, 2), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-                    glm::mat4 projection =
-                        glm::perspective(glm::radians(45.0f), static_cast<float>(width) / height, 0.1f, 100.0f);
+                    glm::mat4 view = glm::mat4(1.0f);
+                    glm::mat4 projection = m_sceneCamera.GetViewProjectionMatrix(width, height);
                     Renderer::SetMVP(model, view, projection);
                     Renderer::DrawIndexed(m_triangleVAO);
                 }
@@ -379,6 +379,30 @@ void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
 
                 ImGui::Image(m_sceneViewport->GetColorAttachmentTextureId(), viewportSize,
                              ImVec2(0, 1), ImVec2(1, 0));
+
+                bool viewportHovered = ImGui::IsItemHovered();
+                if (viewportHovered)
+                {
+                    ImGuiIO& io = ImGui::GetIO();
+                    if (ImGui::IsMouseDown(ImGuiMouseButton_Right))
+                    {
+                        float aspect = static_cast<float>(width) / static_cast<float>(height);
+                        float halfWidth = 2.0f / m_sceneCamera.GetZoom();
+                        float halfHeight = halfWidth / aspect;
+                        float scaleX = (2.0f * halfWidth) / static_cast<float>(width);
+                        float scaleY = (2.0f * halfHeight) / static_cast<float>(height);
+                        m_sceneCamera.Pan(-io.MouseDelta.x * scaleX, io.MouseDelta.y * scaleY);
+                    }
+                    float wheel = io.MouseWheel;
+                    if (wheel != 0.0f)
+                    {
+                        ImVec2 mousePos = io.MousePos;
+                        ImVec2 itemMin = ImGui::GetItemRectMin();
+                        float focusX = mousePos.x - itemMin.x;
+                        float focusY = mousePos.y - itemMin.y;
+                        m_sceneCamera.ZoomAt(wheel * 0.2f, focusX, focusY, width, height);
+                    }
+                }
             }
         }
     }

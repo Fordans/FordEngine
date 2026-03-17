@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FDE/FDE.hpp"
+#include "FDE/Renderer/Camera2D.hpp"
 #include "FDE/Renderer/VertexArray.hpp"
 #include "FDE/Renderer/Viewport.hpp"
 #include "imgui.h"
@@ -43,6 +44,7 @@ class FDE_API EditorApplication : public Application
     float m_titleBarIconHeight = 0;
     std::unique_ptr<Viewport> m_sceneViewport;
     std::shared_ptr<VertexArray> m_triangleVAO;
+    Camera2D m_sceneCamera;
 };
 
 } // namespace FDE

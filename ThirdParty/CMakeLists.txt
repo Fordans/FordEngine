@@ -27,3 +27,9 @@ add_subdirectory(glfw)
 # ImGui
 # -----------------------------------------------------------------------------
 add_subdirectory(imgui)
+
+# -----------------------------------------------------------------------------
+# GLM - OpenGL Mathematics (header-only)
+# -----------------------------------------------------------------------------
+add_library(glm INTERFACE)
+target_include_directories(glm INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/glm/include)

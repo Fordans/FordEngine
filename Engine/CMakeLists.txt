@@ -12,6 +12,11 @@ target_sources(FordEngine PRIVATE
     src/Window/Window.cpp
     src/Editor/EditorApplication.cpp
     src/Editor/EditorPreferences.cpp
+    src/Renderer/Renderer.cpp
+    src/Renderer/Shader.cpp
+    src/Renderer/VertexArray.cpp
+    src/Renderer/VertexBuffer.cpp
+    src/Renderer/Viewport.cpp
 )
 
 # Precompiled headers (optional, to speed up compilation)
@@ -33,6 +38,7 @@ target_link_libraries(FordEngine
         glfw
         glad
         imgui
+        glm
 )
 
 add_subdirectory(Editor)

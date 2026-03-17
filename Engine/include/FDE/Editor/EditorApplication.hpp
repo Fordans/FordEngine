@@ -1,6 +1,8 @@
 #pragma once
 
 #include "FDE/FDE.hpp"
+#include "FDE/Renderer/VertexArray.hpp"
+#include "FDE/Renderer/Viewport.hpp"
 #include "imgui.h"
 #include <memory>
 
@@ -30,13 +32,17 @@ class FDE_API EditorApplication : public Application
     void RenderMainUI();
     void RenderTitleBar();
     void RenderPreferencesWindow(ImGuiID dockspace_id);
+    void RenderSceneView(ImGuiID dockspace_id);
 
   private:
     std::unique_ptr<EditorPreferences> m_preferences;
     bool m_showPreferences = false;
+    bool m_showScene = true;
     void* m_titleBarIconTexture = nullptr;  // ImTextureID / GLuint
     float m_titleBarIconWidth = 0;
     float m_titleBarIconHeight = 0;
+    std::unique_ptr<Viewport> m_sceneViewport;
+    std::shared_ptr<VertexArray> m_triangleVAO;
 };
 
 } // namespace FDE

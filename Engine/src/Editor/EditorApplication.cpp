@@ -1,7 +1,11 @@
 #include "FDE/Editor/EditorApplication.hpp"
 #include "FDE/Editor/EditorPreferences.hpp"
 #include "FDE/ImGui/ImGuiLayer.hpp"
+#include "FDE/Renderer/BufferLayout.hpp"
+#include "FDE/Renderer/Renderer.hpp"
+#include "FDE/Renderer/VertexBuffer.hpp"
 #include <glad/glad.h>
+#include <glm/gtc/matrix_transform.hpp>
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "stb_image.h"
@@ -52,6 +56,29 @@ EditorApplication::EditorApplication() : m_preferences(std::make_unique<EditorPr
     }
 }
 
+namespace
+{
+
+void CreateTriangleMesh(std::shared_ptr<VertexArray>& outVAO)
+{
+    // Position (vec3) + Color (vec3) per vertex
+    float vertices[] = {
+        -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f,  // left, red
+        0.5f,  -0.5f, 0.0f, 0.0f, 1.0f, 0.0f,  // right, green
+        0.0f,  0.5f,  0.0f, 0.0f, 0.0f, 1.0f,  // top, blue
+    };
+    uint32_t indices[] = {0, 1, 2};
+
+    auto vbo = std::make_shared<VertexBuffer>(vertices, sizeof(vertices));
+    BufferLayout layout = {{ShaderDataType::Float3, "a_Position"}, {ShaderDataType::Float3, "a_Color"}};
+
+    outVAO = std::make_shared<VertexArray>();
+    outVAO->AddVertexBuffer(vbo, layout);
+    outVAO->SetIndexBuffer(indices, 3);
+}
+
+} // namespace
+
 EditorApplication::~EditorApplication() = default;
 
 void EditorApplication::LoadTitleBarIcon()
@@ -95,6 +122,8 @@ WindowSpec EditorApplication::GetWindowSpec() const
 void EditorApplication::OnWindowCreated()
 {
     GetLayerStack().PushOverlay(std::make_unique<ImGuiLayer>());
+
+    CreateTriangleMesh(m_triangleVAO);
 
     if (m_preferences->GetMaximized() && GetWindow())
         GetWindow()->Maximize();
@@ -141,7 +170,10 @@ void EditorApplication::RenderMainUI()
     ImGuiID dockspace_id = ImGui::GetID("MainDockspace");
     ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
 
-    RenderPreferencesWindow(dockspace_id);
+    if (m_showScene)
+        RenderSceneView(dockspace_id);
+    if (m_showPreferences)
+        RenderPreferencesWindow(dockspace_id);
 
     if (ImGui::BeginMenuBar())
     {
@@ -159,6 +191,12 @@ void EditorApplication::RenderMainUI()
         {
             ImGui::Separator();
             if (ImGui::MenuItem("Preferences...")) { m_showPreferences = true; }
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("View"))
+        {
+            ImGui::MenuItem("Scene", nullptr, &m_showScene);
+            ImGui::MenuItem("Preferences", nullptr, &m_showPreferences);
             ImGui::EndMenu();
         }
         ImGui::EndMenuBar();
@@ -292,6 +330,56 @@ void EditorApplication::RenderPreferencesWindow(ImGuiID dockspace_id)
                 m_preferences->SetMaximized(s_maximized);
             ImGui::SameLine();
             ImGui::TextDisabled("(Takes effect on next launch)");
+        }
+    }
+    ImGui::End();
+}
+
+void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
+{
+    ImGui::SetNextWindowDockID(dockspace_id, ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Scene"))
+    {
+        ImVec2 viewportSize = ImGui::GetContentRegionAvail();
+        if (viewportSize.x > 0 && viewportSize.y > 0)
+        {
+            uint32_t width = static_cast<uint32_t>(viewportSize.x);
+            uint32_t height = static_cast<uint32_t>(viewportSize.y);
+
+            if (!m_sceneViewport || m_sceneViewport->GetWidth() != width || m_sceneViewport->GetHeight() != height)
+            {
+                if (!m_sceneViewport)
+                    m_sceneViewport = std::make_unique<Viewport>(width, height);
+                else
+                    m_sceneViewport->Resize(width, height);
+            }
+
+            if (m_sceneViewport->IsValid())
+            {
+                m_sceneViewport->Bind();
+
+                Renderer::SetClearColor(0.15f, 0.15f, 0.18f, 1.0f);
+                Renderer::Clear();
+
+                glEnable(GL_DEPTH_TEST);
+
+                if (m_triangleVAO)
+                {
+                    glm::mat4 model = glm::mat4(1.0f);
+                    glm::mat4 view = glm::lookAt(glm::vec3(0, 0, 2), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+                    glm::mat4 projection =
+                        glm::perspective(glm::radians(45.0f), static_cast<float>(width) / height, 0.1f, 100.0f);
+                    Renderer::SetMVP(model, view, projection);
+                    Renderer::DrawIndexed(m_triangleVAO);
+                }
+
+                glDisable(GL_DEPTH_TEST);
+
+                m_sceneViewport->Unbind();
+
+                ImGui::Image(m_sceneViewport->GetColorAttachmentTextureId(), viewportSize,
+                             ImVec2(0, 1), ImVec2(1, 0));
+            }
         }
     }
     ImGui::End();

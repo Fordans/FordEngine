@@ -2,6 +2,7 @@
 #include "FDE/Core/Event.hpp"
 #include "FDE/Core/Log.hpp"
 #include "FDE/ImGui/ImGuiContext.hpp"
+#include "FDE/Renderer/Renderer.hpp"
 #include "FDE/Window/Window.hpp"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -24,6 +25,8 @@ void Application::Run()
         FDE_LOG_CLIENT_ERROR("Failed to initialize GLAD");
         return;
     }
+
+    Renderer::Init();
 
     m_imgui = std::make_unique<ImGuiContext>();
     if (!m_imgui->Init(m_window->GetGLFWWindow()))
@@ -60,6 +63,7 @@ void Application::Run()
 
     OnRunEnd();
     m_imgui->Shutdown();
+    Renderer::Shutdown();
 }
 
 void Application::DispatchEvent(Event& event)

@@ -8,4 +8,5 @@
 #include "FDE/Core/Layer.hpp"
 #include "FDE/Core/LayerStack.hpp"
 #include "FDE/Core/Log.hpp"
+#include "FDE/Renderer/Renderer.hpp"
 #include "FDE/Window/Window.hpp"

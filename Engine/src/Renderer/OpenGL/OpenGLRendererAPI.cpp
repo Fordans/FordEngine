@@ -1,3 +1,4 @@
+#include "FDE/pch.hpp"
 #include "FDE/Renderer/OpenGL/OpenGLRendererAPI.hpp"
 #include "FDE/Renderer/Shader.hpp"
 #include "FDE/Renderer/VertexArray.hpp"
@@ -47,6 +48,13 @@ void OpenGLRendererAPI::DrawTriangles(uint32_t vertexCount)
     if (vertexCount == 0)
         return;
     glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertexCount));
+}
+
+void OpenGLRendererAPI::DrawLines(uint32_t vertexCount)
+{
+    if (vertexCount == 0)
+        return;
+    glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(vertexCount));
 }
 
 } // namespace FDE

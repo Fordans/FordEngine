@@ -1,3 +1,4 @@
+#include "FDE/pch.hpp"
 #include "FDE/Renderer/OpenGL/OpenGLShader.hpp"
 #include "FDE/Core/Log.hpp"
 #include <glad/glad.h>

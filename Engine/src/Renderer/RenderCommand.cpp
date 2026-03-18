@@ -1,3 +1,4 @@
+#include "FDE/pch.hpp"
 #include "FDE/Renderer/RenderCommand.hpp"
 #include "FDE/Renderer/OpenGL/OpenGLRendererAPI.hpp"
 #include "FDE/Core/Log.hpp"
@@ -73,6 +74,12 @@ void RenderCommand::DrawTriangles(uint32_t vertexCount)
 {
     if (s_rendererAPI)
         s_rendererAPI->DrawTriangles(vertexCount);
+}
+
+void RenderCommand::DrawLines(uint32_t vertexCount)
+{
+    if (s_rendererAPI)
+        s_rendererAPI->DrawLines(vertexCount);
 }
 
 } // namespace FDE

@@ -3,6 +3,10 @@ target_compile_definitions(FordEngine PRIVATE FordEngine_EXPORTS)
 
 target_sources(FordEngine PRIVATE 
     src/Core/Application.cpp
+    src/Scene/Object.cpp
+    src/Scene/Scene.cpp
+    src/Scene/Scene2D.cpp
+    src/Scene/World.cpp
     src/Project/ProjectDescriptor.cpp
     src/Core/FileSystem.cpp
     src/Core/Layer.cpp
@@ -29,13 +33,13 @@ target_sources(FordEngine PRIVATE
     src/Renderer/OpenGL/OpenGLViewport.cpp
 )
 
-# Precompiled headers (optional, to speed up compilation)
-# target_precompile_headers(FordEngine PRIVATE include/FDE/pch.hpp)
+target_precompile_headers(FordEngine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include/FDE/pch.hpp)
 
 target_include_directories(FordEngine
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
+        ${CMAKE_SOURCE_DIR}/ThirdParty/entt
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_SOURCE_DIR}/ThirdParty/fds

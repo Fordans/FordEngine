@@ -1,3 +1,4 @@
+#include "FDE/pch.hpp"
 #include "FDE/Renderer/Renderer.hpp"
 #include "FDE/Renderer/RenderCommand.hpp"
 #include "FDE/Renderer/GraphicsAPI.hpp"
@@ -121,6 +122,15 @@ void Renderer::DrawTriangles(uint32_t vertexCount)
     RenderCommand::DrawTriangles(vertexCount);
 }
 
+void Renderer::DrawLines(uint32_t vertexCount)
+{
+    if (!s_currentShader || vertexCount == 0)
+        return;
+
+    s_currentShader->Bind();
+    RenderCommand::DrawLines(vertexCount);
+}
+
 void Renderer::SetMVP(const glm::mat4& model, const glm::mat4& view, const glm::mat4& projection)
 {
     if (s_currentShader)
@@ -133,6 +143,16 @@ void Renderer::SetMVP(const glm::mat4& model, const glm::mat4& view, const glm::
 void Renderer::SetShader(Shader* shader)
 {
     s_currentShader = shader;
+}
+
+Shader* Renderer::GetSimpleShader()
+{
+    return s_simpleShader.get();
+}
+
+void Renderer::UseDefaultShader()
+{
+    s_currentShader = s_defaultShader.get();
 }
 
 } // namespace FDE

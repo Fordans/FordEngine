@@ -1,3 +1,4 @@
+#include "FDE/pch.hpp"
 #include "FDE/Editor/EditorPreferences.hpp"
 #include "FDS_ConfigManager.h"
 
@@ -28,6 +29,12 @@ constexpr const char* KEY_SHOW_SCENE = "ShowScene";
 constexpr const char* KEY_SHOW_CONTENT = "ShowContent";
 constexpr const char* KEY_SHOW_CONSOLE = "ShowConsole";
 constexpr const char* KEY_SHOW_PREFERENCES = "ShowPreferences";
+constexpr const char* KEY_SHOW_SCENE_TREE = "ShowSceneTree";
+constexpr const char* KEY_SHOW_DETAIL = "ShowDetail";
+constexpr const char* FILTER_SCENE = "Scene";
+constexpr const char* KEY_SHOW_GRID = "ShowGrid";
+constexpr const char* KEY_GRID_SIZE = "GridSize";
+constexpr float DEFAULT_GRID_SIZE = 1.0f;
 } // namespace
 
 EditorPreferences::EditorPreferences() : m_configPath("FordEditor.cfg"), m_impl(std::make_unique<ConfigImpl>(m_configPath))
@@ -183,6 +190,74 @@ bool EditorPreferences::GetShowPreferences() const
 void EditorPreferences::SetShowPreferences(bool show)
 {
     m_impl->config.setConfig(FILTER_VIEW, KEY_SHOW_PREFERENCES, show);
+}
+
+bool EditorPreferences::GetShowSceneTree() const
+{
+    try
+    {
+        return m_impl->config.getConfig<bool>(FILTER_VIEW, KEY_SHOW_SCENE_TREE);
+    }
+    catch (const std::exception&)
+    {
+        return true;
+    }
+}
+
+void EditorPreferences::SetShowSceneTree(bool show)
+{
+    m_impl->config.setConfig(FILTER_VIEW, KEY_SHOW_SCENE_TREE, show);
+}
+
+bool EditorPreferences::GetShowDetail() const
+{
+    try
+    {
+        return m_impl->config.getConfig<bool>(FILTER_VIEW, KEY_SHOW_DETAIL);
+    }
+    catch (const std::exception&)
+    {
+        return true;
+    }
+}
+
+void EditorPreferences::SetShowDetail(bool show)
+{
+    m_impl->config.setConfig(FILTER_VIEW, KEY_SHOW_DETAIL, show);
+}
+
+bool EditorPreferences::GetShowSceneGrid() const
+{
+    try
+    {
+        return m_impl->config.getConfig<bool>(FILTER_SCENE, KEY_SHOW_GRID);
+    }
+    catch (const std::exception&)
+    {
+        return true;
+    }
+}
+
+void EditorPreferences::SetShowSceneGrid(bool show)
+{
+    m_impl->config.setConfig(FILTER_SCENE, KEY_SHOW_GRID, show);
+}
+
+float EditorPreferences::GetSceneGridSize() const
+{
+    try
+    {
+        return m_impl->config.getConfig<float>(FILTER_SCENE, KEY_GRID_SIZE);
+    }
+    catch (const std::exception&)
+    {
+        return DEFAULT_GRID_SIZE;
+    }
+}
+
+void EditorPreferences::SetSceneGridSize(float size)
+{
+    m_impl->config.setConfig(FILTER_SCENE, KEY_GRID_SIZE, size);
 }
 
 } // namespace FDE

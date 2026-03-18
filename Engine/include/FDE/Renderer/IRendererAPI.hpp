@@ -27,6 +27,7 @@ class FDE_API IRendererAPI
 
     virtual void DrawIndexed(const std::shared_ptr<VertexArray>& vertexArray, uint32_t indexCount = 0) = 0;
     virtual void DrawTriangles(uint32_t vertexCount) = 0;
+    virtual void DrawLines(uint32_t vertexCount) = 0;
 };
 
 } // namespace FDE

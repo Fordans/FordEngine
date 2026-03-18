@@ -1,3 +1,4 @@
+#include "FDE/pch.hpp"
 #include "FDE/Window/Window.hpp"
 #include "FDE/Core/Events/KeyEvent.hpp"
 #include "FDE/Core/Events/MouseEvent.hpp"

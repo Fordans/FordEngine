@@ -25,6 +25,7 @@ class FDE_API RenderCommand
     static void SetViewport(int x, int y, int width, int height);
     static void DrawIndexed(const std::shared_ptr<VertexArray>& vertexArray, uint32_t indexCount = 0);
     static void DrawTriangles(uint32_t vertexCount);
+    static void DrawLines(uint32_t vertexCount);
 
   private:
     static std::unique_ptr<IRendererAPI> s_rendererAPI;

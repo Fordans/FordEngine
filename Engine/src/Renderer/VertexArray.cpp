@@ -1,3 +1,4 @@
+#include "FDE/pch.hpp"
 #include "FDE/Renderer/VertexArray.hpp"
 #include "FDE/Renderer/OpenGL/OpenGLVertexArray.hpp"
 #include "FDE/Renderer/RenderCommand.hpp"

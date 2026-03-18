@@ -1,3 +1,4 @@
+#include "FDE/pch.hpp"
 #include "FDE/Renderer/Camera2D.hpp"
 #include <algorithm>
 

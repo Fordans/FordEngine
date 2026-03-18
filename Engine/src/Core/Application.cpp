@@ -1,3 +1,4 @@
+#include "FDE/pch.hpp"
 #include "FDE/Core/Application.hpp"
 #include "FDE/Core/Event.hpp"
 #include "FDE/Core/Log.hpp"

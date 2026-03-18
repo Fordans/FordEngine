@@ -42,6 +42,16 @@ class FDE_API EditorPreferences
     void SetShowConsole(bool show);
     bool GetShowPreferences() const;
     void SetShowPreferences(bool show);
+    bool GetShowSceneTree() const;
+    void SetShowSceneTree(bool show);
+    bool GetShowDetail() const;
+    void SetShowDetail(bool show);
+
+    // Scene grid (editor view)
+    bool GetShowSceneGrid() const;
+    void SetShowSceneGrid(bool show);
+    float GetSceneGridSize() const;
+    void SetSceneGridSize(float size);
 
   private:
     std::string m_configPath;

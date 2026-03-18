@@ -1,3 +1,4 @@
+#include "FDE/pch.hpp"
 #include "FDE/Renderer/Viewport.hpp"
 #include "FDE/Renderer/OpenGL/OpenGLViewport.hpp"
 #include "FDE/Renderer/RenderCommand.hpp"

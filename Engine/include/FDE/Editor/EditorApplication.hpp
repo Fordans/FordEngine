@@ -5,6 +5,9 @@
 #include "FDE/Renderer/Camera2D.hpp"
 #include "FDE/Renderer/VertexArray.hpp"
 #include "FDE/Renderer/Viewport.hpp"
+#include "FDE/Scene/Object.hpp"
+#include "FDE/Scene/Scene2D.hpp"
+#include "FDE/Scene/World.hpp"
 #include "imgui.h"
 #include <memory>
 #include <optional>
@@ -37,7 +40,11 @@ class FDE_API EditorApplication : public Application
     void RenderTitleBar();
     void RenderPreferencesWindow(ImGuiID dockspace_id);
     void RenderSceneView(ImGuiID dockspace_id);
+    void RenderSceneTreeView(ImGuiID dockspace_id);
+    void RenderDetailView(ImGuiID dockspace_id);
     void RenderContentView(ImGuiID dockspace_id);
+    void RenderSceneGridOverlay(ImVec2 itemMin, ImVec2 itemMax, uint32_t viewportWidth,
+                               uint32_t viewportHeight);
     void LoadContentViewIcons();
 
     void OnNewProject();
@@ -49,6 +56,8 @@ class FDE_API EditorApplication : public Application
     std::unique_ptr<EditorPreferences> m_preferences;
     bool m_showPreferences = false;
     bool m_showScene = true;
+    bool m_showSceneTree = true;
+    bool m_showDetail = true;
     bool m_showConsole = true;
     bool m_showContentView = true;
     void* m_titleBarIconTexture = nullptr;  // ImTextureID / GLuint
@@ -58,7 +67,9 @@ class FDE_API EditorApplication : public Application
     void* m_contentViewFileIcon = nullptr;
     std::string m_contentViewCurrentPath;  // relative to project root
     std::unique_ptr<Viewport> m_sceneViewport;
-    std::shared_ptr<VertexArray> m_triangleVAO;
+    std::unique_ptr<World> m_world;
+    Scene2D* m_scene2D = nullptr;
+    Object m_selectedObject;  // Selected entity in Scene Tree (for future Inspector)
     Camera2D m_sceneCamera;
     std::optional<ProjectDescriptor> m_projectDescriptor;
 };

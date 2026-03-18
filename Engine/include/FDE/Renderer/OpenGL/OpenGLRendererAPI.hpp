@@ -20,6 +20,7 @@ class FDE_API OpenGLRendererAPI : public IRendererAPI
 
     void DrawIndexed(const std::shared_ptr<VertexArray>& vertexArray, uint32_t indexCount = 0) override;
     void DrawTriangles(uint32_t vertexCount) override;
+    void DrawLines(uint32_t vertexCount) override;
 };
 
 } // namespace FDE

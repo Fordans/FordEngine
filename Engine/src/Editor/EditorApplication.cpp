@@ -1,14 +1,14 @@
-#if defined(_WIN32)
-#include <windows.h>
-#endif
-
+#include "FDE/pch.hpp"
 #include "FDE/Editor/EditorApplication.hpp"
 #include "FDE/Editor/EditorConsole.hpp"
 #include "FDE/Editor/EditorPreferences.hpp"
 #include "FDE/ImGui/ImGuiLayer.hpp"
 #include "FDE/Renderer/BufferLayout.hpp"
 #include "FDE/Renderer/Renderer.hpp"
+#include "FDE/Renderer/VertexArray.hpp"
 #include "FDE/Renderer/VertexBuffer.hpp"
+#include "FDE/Scene/Components.hpp"
+#include "FDE/Scene/Object.hpp"
 #include "FDE/Core/FileSystem.hpp"
 #include "FDE/Core/Log.hpp"
 #include "FDE/Window/Window.hpp"
@@ -19,7 +19,9 @@
 #include "imgui_impl_opengl3.h"
 #include "stb_image.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <vector>
 
@@ -31,12 +33,81 @@
 #include <objbase.h>
 #endif
 
+namespace
+{
+
+void CreateTriangleMesh(std::shared_ptr<FDE::VertexArray>& outVAO)
+{
+    float vertices[] = {
+        -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f,
+        0.5f,  -0.5f, 0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f,  0.5f,  0.0f, 0.0f, 0.0f, 1.0f,
+    };
+    uint32_t indices[] = {0, 1, 2};
+    auto vbo = FDE::VertexBuffer::Create(vertices, sizeof(vertices));
+    FDE::BufferLayout layout = {{FDE::ShaderDataType::Float3, "a_Position"},
+                                {FDE::ShaderDataType::Float3, "a_Color"}};
+    outVAO = FDE::VertexArray::Create();
+    if (outVAO && vbo)
+    {
+        outVAO->AddVertexBuffer(vbo, layout);
+        outVAO->SetIndexBuffer(indices, 3);
+    }
+}
+
+FDE::Scene2D* CreateDefaultScene(FDE::World* world)
+{
+    if (!world)
+        return nullptr;
+    FDE::Scene2D* scene = world->CreateScene2D("Default");
+    if (!scene)
+        return nullptr;
+    world->SetActiveScene(scene);
+    std::shared_ptr<FDE::VertexArray> triangleVAO;
+    CreateTriangleMesh(triangleVAO);
+    FDE::Object triangleObj = scene->CreateObject();
+    scene->AddComponent<FDE::TagComponent>(triangleObj, "Triangle");
+    scene->AddComponent<FDE::Transform2DComponent>(triangleObj);
+    FDE::Mesh2DComponent meshComp;
+    meshComp.vertexArray = triangleVAO;
+    meshComp.meshAsset = "builtin:triangle";
+    scene->AddComponent<FDE::Mesh2DComponent>(triangleObj, meshComp);
+    return scene;
+}
+
+void ResolvePendingMeshes(FDE::World* world)
+{
+    if (!world)
+        return;
+    for (const std::string& name : world->GetSceneNames())
+    {
+        FDE::Scene* scene = world->GetScene(name);
+        if (!scene)
+            continue;
+        auto view = scene->GetRegistry().view<FDE::Mesh2DComponent>();
+        for (auto entity : view)
+        {
+            auto& mesh = view.get<FDE::Mesh2DComponent>(entity);
+            if (mesh.meshAsset == "builtin:triangle" && !mesh.vertexArray)
+            {
+                std::shared_ptr<FDE::VertexArray> va;
+                CreateTriangleMesh(va);
+                mesh.vertexArray = va;
+            }
+        }
+    }
+}
+
+} // namespace
+
 namespace FDE
 {
 
 EditorApplication::EditorApplication(const std::string& initialProjectPath)
     : m_preferences(std::make_unique<EditorPreferences>())
     , m_showScene(m_preferences->GetShowScene())
+    , m_showSceneTree(m_preferences->GetShowSceneTree())
+    , m_showDetail(m_preferences->GetShowDetail())
     , m_showConsole(m_preferences->GetShowConsole())
     , m_showContentView(m_preferences->GetShowContent())
     , m_showPreferences(m_preferences->GetShowPreferences())
@@ -52,18 +123,22 @@ EditorApplication::EditorApplication(const std::string& initialProjectPath)
         std::string projectRoot = std::filesystem::path(initialProjectPath).parent_path().string();
         if (ProjectDescriptor::IsProjectDirectory(projectRoot))
         {
+            m_world = std::make_unique<World>();
             ProjectDescriptor desc;
             std::string err;
-            if (ProjectDescriptor::LoadFromDirectory(projectRoot, desc, err))
+            if (ProjectDescriptor::LoadFromDirectory(projectRoot, desc, err, m_world.get()))
             {
                 FileSystem::SetProjectRoot(projectRoot);
                 m_projectDescriptor = desc;
                 m_preferences->SetLastProjectPath(projectRoot);
                 m_contentViewCurrentPath.clear();
+                m_scene2D = dynamic_cast<Scene2D*>(m_world->GetActiveScene());
+                // Defer CreateDefaultScene to OnWindowCreated - OpenGL not ready in constructor
                 FDE_LOG_CLIENT_INFO("Opened project from file: {} ({})", desc.name, projectRoot);
             }
             else
             {
+                m_world.reset();
                 FDE_LOG_CLIENT_ERROR("Failed to load project: {}", err);
             }
         }
@@ -153,27 +228,6 @@ std::string ShowFolderPicker(void*, const std::string&)
     return {};
 }
 #endif
-
-void CreateTriangleMesh(std::shared_ptr<VertexArray>& outVAO)
-{
-    // Position (vec3) + Color (vec3) per vertex
-    float vertices[] = {
-        -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f,  // left, red
-        0.5f,  -0.5f, 0.0f, 0.0f, 1.0f, 0.0f,  // right, green
-        0.0f,  0.5f,  0.0f, 0.0f, 0.0f, 1.0f,  // top, blue
-    };
-    uint32_t indices[] = {0, 1, 2};
-
-    auto vbo = VertexBuffer::Create(vertices, sizeof(vertices));
-    BufferLayout layout = {{ShaderDataType::Float3, "a_Position"}, {ShaderDataType::Float3, "a_Color"}};
-
-    outVAO = VertexArray::Create();
-    if (outVAO && vbo)
-    {
-        outVAO->AddVertexBuffer(vbo, layout);
-        outVAO->SetIndexBuffer(indices, 3);
-    }
-}
 
 } // namespace
 
@@ -402,7 +456,18 @@ void EditorApplication::OnWindowCreated()
     GetLayerStack().PushOverlay(std::make_unique<ImGuiLayer>());
     EditorConsole::Initialize();
 
-    CreateTriangleMesh(m_triangleVAO);
+    if (!m_world)
+    {
+        m_world = std::make_unique<World>();
+        m_scene2D = CreateDefaultScene(m_world.get());
+    }
+    else
+    {
+        m_scene2D = dynamic_cast<Scene2D*>(m_world->GetActiveScene());
+        if (!m_scene2D && m_world->GetSceneNames().empty())
+            m_scene2D = CreateDefaultScene(m_world.get());
+        ResolvePendingMeshes(m_world.get());
+    }
 
     if (m_preferences->GetMaximized() && GetWindow())
         GetWindow()->Maximize();
@@ -413,6 +478,8 @@ void EditorApplication::OnRunEnd()
     if (Window* w = GetWindow())
         m_preferences->SetMaximized(w->IsMaximized());
     m_preferences->SetShowScene(m_showScene);
+    m_preferences->SetShowSceneTree(m_showSceneTree);
+    m_preferences->SetShowDetail(m_showDetail);
     m_preferences->SetShowContent(m_showContentView);
     m_preferences->SetShowConsole(m_showConsole);
     m_preferences->SetShowPreferences(m_showPreferences);
@@ -455,6 +522,10 @@ void EditorApplication::RenderMainUI()
 
     if (m_showScene)
         RenderSceneView(dockspace_id);
+    if (m_showSceneTree)
+        RenderSceneTreeView(dockspace_id);
+    if (m_showDetail)
+        RenderDetailView(dockspace_id);
     if (m_showPreferences)
         RenderPreferencesWindow(dockspace_id);
     if (m_showConsole)
@@ -494,6 +565,8 @@ void EditorApplication::RenderMainUI()
         if (ImGui::BeginMenu("View"))
         {
             ImGui::MenuItem("Scene", nullptr, &m_showScene);
+            ImGui::MenuItem("Scene Tree", nullptr, &m_showSceneTree);
+            ImGui::MenuItem("Detail", nullptr, &m_showDetail);
             ImGui::MenuItem("Content", nullptr, &m_showContentView);
             ImGui::MenuItem("Console", nullptr, &m_showConsole);
             ImGui::MenuItem("Preferences", nullptr, &m_showPreferences);
@@ -633,6 +706,12 @@ void EditorApplication::OnNewProject()
     m_projectDescriptor = desc;
     m_preferences->SetLastProjectPath(projectRoot);
     m_contentViewCurrentPath.clear();
+
+    // Reset world to default for new project
+    m_world = std::make_unique<World>();
+    m_scene2D = CreateDefaultScene(m_world.get());
+    m_selectedObject = Object{};
+
     FDE_LOG_CLIENT_INFO("Created project: {}", projectRoot);
 }
 
@@ -659,10 +738,12 @@ void EditorApplication::OnOpenProject()
         return;
     }
 
+    m_world = std::make_unique<World>();
     ProjectDescriptor desc;
     std::string err;
-    if (!ProjectDescriptor::LoadFromDirectory(selected, desc, err))
+    if (!ProjectDescriptor::LoadFromDirectory(selected, desc, err, m_world.get()))
     {
+        m_world.reset();
         FDE_LOG_CLIENT_ERROR("Failed to load project: {}", err);
         return;
     }
@@ -671,6 +752,11 @@ void EditorApplication::OnOpenProject()
     m_projectDescriptor = desc;
     m_preferences->SetLastProjectPath(selected);
     m_contentViewCurrentPath.clear();
+    m_scene2D = dynamic_cast<Scene2D*>(m_world->GetActiveScene());
+    if (!m_scene2D && m_world->GetSceneNames().empty())
+        m_scene2D = CreateDefaultScene(m_world.get());
+    ResolvePendingMeshes(m_world.get());
+    m_selectedObject = Object{};
     FDE_LOG_CLIENT_INFO("Opened project: {} ({})", desc.name, selected);
 }
 
@@ -681,7 +767,7 @@ void EditorApplication::OnSaveProject()
 
     std::string root = FileSystem::GetProjectRoot();
     std::string err;
-    if (!m_projectDescriptor->SaveToDirectory(root, err))
+    if (!m_projectDescriptor->SaveToDirectory(root, err, m_world.get()))
     {
         FDE_LOG_CLIENT_ERROR("Failed to save project: {}", err);
         return;
@@ -829,11 +915,171 @@ void EditorApplication::RenderPreferencesWindow(ImGuiID dockspace_id)
     ImGui::End();
 }
 
+void EditorApplication::RenderDetailView(ImGuiID dockspace_id)
+{
+    ImGui::SetNextWindowDockID(dockspace_id, ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Detail"))
+    {
+        if (!m_selectedObject.IsValid())
+        {
+            ImGui::TextDisabled("No object selected");
+            ImGui::TextDisabled("Select an object in the Scene Tree");
+            ImGui::End();
+            return;
+        }
+
+        Scene* scene = m_selectedObject.GetScene();
+        if (!scene)
+        {
+            ImGui::TextDisabled("Invalid selection");
+            ImGui::End();
+            return;
+        }
+
+        // Tag component (name)
+        if (auto* tag = scene->GetComponent<TagComponent>(m_selectedObject))
+        {
+            if (ImGui::CollapsingHeader("Tag", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                char buf[256];
+                std::strncpy(buf, tag->name.c_str(), 255);
+                buf[255] = '\0';
+                if (ImGui::InputText("Name", buf, sizeof(buf)))
+                    tag->name = buf;
+            }
+        }
+
+        // Transform2D component
+        if (auto* transform = scene->GetComponent<Transform2DComponent>(m_selectedObject))
+        {
+            if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::DragFloat2("Position", &transform->position.x, 0.05f);
+                ImGui::DragFloat("Rotation", &transform->rotation, 0.01f, -3.14159f, 3.14159f, "%.3f rad");
+                ImGui::DragFloat2("Scale", &transform->scale.x, 0.05f, 0.001f, 1000.0f);
+            }
+        }
+
+        // Mesh2D component - show as read-only info for now
+        if (scene->HasComponent<Mesh2DComponent>(m_selectedObject))
+        {
+            if (ImGui::CollapsingHeader("Mesh2D"))
+            {
+                ImGui::TextDisabled("(Mesh component - no editable properties)");
+            }
+        }
+    }
+    ImGui::End();
+}
+
+void EditorApplication::RenderSceneTreeView(ImGuiID dockspace_id)
+{
+    ImGui::SetNextWindowDockID(dockspace_id, ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Scene Tree"))
+    {
+        Scene* activeScene = m_world ? m_world->GetActiveScene() : nullptr;
+        if (!activeScene)
+        {
+            ImGui::TextDisabled("No scene loaded");
+            ImGui::End();
+            return;
+        }
+
+        std::string sceneName = activeScene->GetName();
+        ImGui::TextDisabled("%s", sceneName.c_str());
+        ImGui::Separator();
+
+        ImGui::BeginChild("SceneTreeList", ImVec2(0, 0), false);
+
+        entt::registry& reg = activeScene->GetRegistry();
+        for (auto entity : reg.view<entt::entity>())
+        {
+            const char* displayName = "Entity";
+            if (auto* tag = reg.try_get<TagComponent>(entity))
+                displayName = tag->name.c_str();
+
+            Object obj(entity, activeScene);
+            bool isSelected = m_selectedObject.IsValid() && m_selectedObject.GetEntity() == entity;
+
+            if (ImGui::Selectable(displayName, isSelected))
+            {
+                m_selectedObject = obj;
+            }
+        }
+
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
+
+void EditorApplication::RenderSceneGridOverlay(ImVec2 itemMin, ImVec2 itemMax, uint32_t viewportWidth,
+                                              uint32_t viewportHeight)
+{
+    if (!m_preferences->GetShowSceneGrid() || viewportWidth == 0 || viewportHeight == 0)
+        return;
+
+    float gridSize = m_preferences->GetSceneGridSize();
+    if (gridSize <= 0.001f)
+        gridSize = 0.5f;
+
+    float aspect = static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight);
+    float halfWidth = 2.0f / m_sceneCamera.GetZoom();
+    float halfHeight = halfWidth / aspect;
+    glm::vec2 pos = m_sceneCamera.GetPosition();
+    float left = pos.x - halfWidth;
+    float right = pos.x + halfWidth;
+    float bottom = pos.y - halfHeight;
+    float top = pos.y + halfHeight;
+
+    float startX = std::floor(left / gridSize) * gridSize;
+    float endX = std::ceil(right / gridSize) * gridSize;
+    float startY = std::floor(bottom / gridSize) * gridSize;
+    float endY = std::ceil(top / gridSize) * gridSize;
+
+    float rectW = itemMax.x - itemMin.x;
+    float rectH = itemMax.y - itemMin.y;
+    auto worldToScreen = [&](float wx, float wy) -> ImVec2 {
+        float sx = itemMin.x + (wx - left) / (right - left) * rectW;
+        float sy = itemMin.y + (top - wy) / (top - bottom) * rectH;
+        return ImVec2(sx, sy);
+    };
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    ImU32 gridColor = IM_COL32(128, 128, 140, 200);
+
+    for (float y = startY; y <= endY; y += gridSize)
+    {
+        ImVec2 p0 = worldToScreen(left, y);
+        ImVec2 p1 = worldToScreen(right, y);
+        drawList->AddLine(p0, p1, gridColor, 1.0f);
+    }
+    for (float x = startX; x <= endX; x += gridSize)
+    {
+        ImVec2 p0 = worldToScreen(x, bottom);
+        ImVec2 p1 = worldToScreen(x, top);
+        drawList->AddLine(p0, p1, gridColor, 1.0f);
+    }
+}
+
 void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
 {
     ImGui::SetNextWindowDockID(dockspace_id, ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Scene"))
     {
+        bool showGrid = m_preferences->GetShowSceneGrid();
+        if (ImGui::Checkbox("Grid", &showGrid))
+            m_preferences->SetShowSceneGrid(showGrid);
+        ImGui::SameLine();
+        float gridSize = m_preferences->GetSceneGridSize();
+        ImGui::SetNextItemWidth(80.0f);
+        if (ImGui::DragFloat("##GridSize", &gridSize, 0.05f, 0.1f, 10.0f, "%.2f"))
+        {
+            gridSize = std::max(0.1f, std::min(10.0f, gridSize));
+            m_preferences->SetSceneGridSize(gridSize);
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Grid cell size");
+
         ImVec2 viewportSize = ImGui::GetContentRegionAvail();
         if (viewportSize.x > 0 && viewportSize.y > 0)
         {
@@ -856,14 +1102,9 @@ void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
                 Renderer::Clear();
 
                 glEnable(GL_DEPTH_TEST);
-
-                if (m_triangleVAO)
+                if (m_scene2D)
                 {
-                    glm::mat4 model = glm::mat4(1.0f);
-                    glm::mat4 view = glm::mat4(1.0f);
-                    glm::mat4 projection = m_sceneCamera.GetViewProjectionMatrix(width, height);
-                    Renderer::SetMVP(model, view, projection);
-                    Renderer::DrawIndexed(m_triangleVAO);
+                    m_scene2D->Render(m_sceneCamera, width, height);
                 }
 
                 glDisable(GL_DEPTH_TEST);
@@ -873,6 +1114,12 @@ void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
                 ImGui::Image(m_sceneViewport->GetColorAttachmentTextureId(), viewportSize,
                              ImVec2(0, 1), ImVec2(1, 0));
 
+                ImVec2 imgMin = ImGui::GetItemRectMin();
+                ImVec2 imgMax = ImGui::GetItemRectMax();
+                RenderSceneGridOverlay(imgMin, imgMax, width, height);
+
+                ImGui::SetCursorScreenPos(imgMin);
+                ImGui::InvisibleButton("##SceneViewport", viewportSize);
                 bool viewportHovered = ImGui::IsItemHovered();
                 if (viewportHovered)
                 {

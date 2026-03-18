@@ -1,9 +1,5 @@
+#include "FDE/pch.hpp"
 #include "FDE/Core/FileSystem.hpp"
-#include <filesystem>
-
-#if defined(_WIN32)
-#include <windows.h>
-#endif
 
 namespace FDE
 {

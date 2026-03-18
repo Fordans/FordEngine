@@ -25,9 +25,14 @@ class FDE_API Renderer
 
     static void DrawIndexed(const std::shared_ptr<VertexArray>& vertexArray, uint32_t indexCount = 0);
     static void DrawTriangles(uint32_t vertexCount);
+    static void DrawLines(uint32_t vertexCount);
 
     static void SetMVP(const glm::mat4& model, const glm::mat4& view, const glm::mat4& projection);
     static void SetShader(Shader* shader);
+    /// Returns the simple shader (position-only, u_Color uniform) for lines, debug draw, etc.
+    static Shader* GetSimpleShader();
+    /// Restores the default shader (for colored meshes). Call after using GetSimpleShader().
+    static void UseDefaultShader();
 };
 
 } // namespace FDE

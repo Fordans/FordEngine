@@ -1,3 +1,4 @@
+#include "FDE/pch.hpp"
 #include "FDE/Editor/EditorConsole.hpp"
 #include "FDE/Core/Log.hpp"
 #include <spdlog/sinks/ringbuffer_sink.h>

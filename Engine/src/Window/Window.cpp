@@ -2,49 +2,13 @@
 #include "FDE/Core/Events/KeyEvent.hpp"
 #include "FDE/Core/Events/MouseEvent.hpp"
 #include "FDE/Core/Events/WindowEvent.hpp"
+#include "FDE/Core/FileSystem.hpp"
 #include "FDE/Core/Log.hpp"
 #include <GLFW/glfw3.h>
 #include "stb_image.h"
 
-#include <filesystem>
-
-#if defined(_WIN32)
-#include <windows.h>
-#endif
-
 namespace FDE
 {
-
-static std::string GetExecutableDirectory()
-{
-#if defined(_WIN32)
-    char path[MAX_PATH];
-    if (GetModuleFileNameA(nullptr, path, MAX_PATH) == 0)
-        return {};
-    std::filesystem::path p(path);
-    return p.parent_path().string();
-#else
-    return {};
-#endif
-}
-
-static std::string ResolveIconPath(const std::string& baseName)
-{
-    namespace fs = std::filesystem;
-    // 1) 相对于当前工作目录（从项目根运行）
-    std::string cwdPath = "Resources/" + baseName;
-    if (fs::exists(cwdPath))
-        return fs::absolute(cwdPath).string();
-    // 2) 相对于 exe 所在目录（CMake 已复制 Resources 到 exe 旁）
-    std::string exeDir = GetExecutableDirectory();
-    if (!exeDir.empty())
-    {
-        std::string exePath = exeDir + "/Resources/" + baseName;
-        if (fs::exists(exePath))
-            return exePath;
-    }
-    return {};
-}
 
 static void GlfwErrorCallback(int error, const char* description)
 {
@@ -195,7 +159,7 @@ Window::Window(const WindowSpec& spec)
     }
 
     // 设置窗口图标（任务栏、标题栏）
-    std::string iconPath = spec.iconPath.empty() ? ResolveIconPath("FE.png") : spec.iconPath;
+    std::string iconPath = spec.iconPath.empty() ? FileSystem::ResolveEngineResource("FE.png") : spec.iconPath;
     if (!iconPath.empty())
     {
         int iconW, iconH, channels;

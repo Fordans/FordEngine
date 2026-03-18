@@ -33,3 +33,9 @@ add_subdirectory(imgui)
 # -----------------------------------------------------------------------------
 add_library(glm INTERFACE)
 target_include_directories(glm INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/glm/include)
+
+# -----------------------------------------------------------------------------
+# json11 - Lightweight JSON library for C++11
+# -----------------------------------------------------------------------------
+set(JSON11_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+add_subdirectory(json11)

@@ -1,37 +1,13 @@
 #include "FDE/ImGui/ImGuiContext.hpp"
+#include "FDE/Core/FileSystem.hpp"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include <GLFW/glfw3.h>
-#include <filesystem>
 #include <string>
-
-#if defined(_WIN32)
-#include <windows.h>
-#endif
 
 namespace FDE
 {
-
-static std::string ResolveResourcePath(const std::string& relativePath)
-{
-    namespace fs = std::filesystem;
-    std::string cwdPath = "Resources/" + relativePath;
-    if (fs::exists(cwdPath))
-        return fs::absolute(cwdPath).string();
-#if defined(_WIN32)
-    char path[MAX_PATH];
-    if (GetModuleFileNameA(nullptr, path, MAX_PATH) != 0)
-    {
-        fs::path exePath(path);
-        std::string exeDir = exePath.parent_path().string();
-        std::string fullPath = exeDir + "/Resources/" + relativePath;
-        if (fs::exists(fullPath))
-            return fullPath;
-    }
-#endif
-    return {};
-}
 
 bool ImGuiContext::Init(GLFWwindow* window)
 {
@@ -111,7 +87,7 @@ bool ImGuiContext::Init(GLFWwindow* window)
     style.ScaleAllSizes(1.35f);
 
     // 自定义字体：Angel wish.ttf
-    std::string fontPath = ResolveResourcePath("Angel wish.ttf");
+    std::string fontPath = FileSystem::ResolveEngineResource("Angel wish.ttf");
     if (!fontPath.empty())
     {
         io.Fonts->Clear();

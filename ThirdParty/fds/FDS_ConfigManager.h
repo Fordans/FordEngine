@@ -286,3 +286,21 @@ bool FDS_ConfigManager::getConfig(const std::string& filter, const std::string& 
 		throw std::runtime_error("Invalid boolean value for key: " + key + " in filter: " + filter);
 	}
 }
+
+template<>
+std::string FDS_ConfigManager::getConfig(const std::string& filter, const std::string& key)
+{
+	auto filterIt = m_configData.find(filter);
+	if (filterIt == m_configData.end())
+	{
+		throw std::runtime_error("Filter not found: " + filter);
+	}
+
+	auto keyIt = filterIt->second.find(key);
+	if (keyIt == filterIt->second.end())
+	{
+		throw std::runtime_error("Key not found: " + key + " in filter: " + filter);
+	}
+
+	return keyIt->second;
+}

@@ -18,6 +18,16 @@ constexpr const char* FILTER_WINDOW = "Window";
 constexpr const char* KEY_WIDTH = "Width";
 constexpr const char* KEY_HEIGHT = "Height";
 constexpr const char* KEY_MAXIMIZED = "Maximized";
+constexpr const char* FILTER_PROJECT = "Project";
+constexpr const char* KEY_LAST_PROJECT_PATH = "LastProjectPath";
+constexpr const char* FILTER_CONTENT = "Content";
+constexpr const char* KEY_CONTENT_ICON_SIZE = "IconSize";
+constexpr int DEFAULT_CONTENT_ICON_SIZE = 48;
+constexpr const char* FILTER_VIEW = "View";
+constexpr const char* KEY_SHOW_SCENE = "ShowScene";
+constexpr const char* KEY_SHOW_CONTENT = "ShowContent";
+constexpr const char* KEY_SHOW_CONSOLE = "ShowConsole";
+constexpr const char* KEY_SHOW_PREFERENCES = "ShowPreferences";
 } // namespace
 
 EditorPreferences::EditorPreferences() : m_configPath("FordEditor.cfg"), m_impl(std::make_unique<ConfigImpl>(m_configPath))
@@ -71,6 +81,108 @@ bool EditorPreferences::GetMaximized() const
 void EditorPreferences::SetMaximized(bool maximized)
 {
     m_impl->config.setConfig(FILTER_WINDOW, KEY_MAXIMIZED, maximized);
+}
+
+std::string EditorPreferences::GetLastProjectPath() const
+{
+    try
+    {
+        return m_impl->config.getConfig<std::string>(FILTER_PROJECT, KEY_LAST_PROJECT_PATH);
+    }
+    catch (const std::exception&)
+    {
+        return {};
+    }
+}
+
+void EditorPreferences::SetLastProjectPath(const std::string& path)
+{
+    m_impl->config.setConfig(FILTER_PROJECT, KEY_LAST_PROJECT_PATH, path);
+}
+
+int EditorPreferences::GetContentIconSize() const
+{
+    try
+    {
+        return m_impl->config.getConfig<int>(FILTER_CONTENT, KEY_CONTENT_ICON_SIZE);
+    }
+    catch (const std::exception&)
+    {
+        return DEFAULT_CONTENT_ICON_SIZE;
+    }
+}
+
+void EditorPreferences::SetContentIconSize(int size)
+{
+    m_impl->config.setConfig(FILTER_CONTENT, KEY_CONTENT_ICON_SIZE, size);
+}
+
+bool EditorPreferences::GetShowScene() const
+{
+    try
+    {
+        return m_impl->config.getConfig<bool>(FILTER_VIEW, KEY_SHOW_SCENE);
+    }
+    catch (const std::exception&)
+    {
+        return true;
+    }
+}
+
+void EditorPreferences::SetShowScene(bool show)
+{
+    m_impl->config.setConfig(FILTER_VIEW, KEY_SHOW_SCENE, show);
+}
+
+bool EditorPreferences::GetShowContent() const
+{
+    try
+    {
+        return m_impl->config.getConfig<bool>(FILTER_VIEW, KEY_SHOW_CONTENT);
+    }
+    catch (const std::exception&)
+    {
+        return true;
+    }
+}
+
+void EditorPreferences::SetShowContent(bool show)
+{
+    m_impl->config.setConfig(FILTER_VIEW, KEY_SHOW_CONTENT, show);
+}
+
+bool EditorPreferences::GetShowConsole() const
+{
+    try
+    {
+        return m_impl->config.getConfig<bool>(FILTER_VIEW, KEY_SHOW_CONSOLE);
+    }
+    catch (const std::exception&)
+    {
+        return true;
+    }
+}
+
+void EditorPreferences::SetShowConsole(bool show)
+{
+    m_impl->config.setConfig(FILTER_VIEW, KEY_SHOW_CONSOLE, show);
+}
+
+bool EditorPreferences::GetShowPreferences() const
+{
+    try
+    {
+        return m_impl->config.getConfig<bool>(FILTER_VIEW, KEY_SHOW_PREFERENCES);
+    }
+    catch (const std::exception&)
+    {
+        return false;
+    }
+}
+
+void EditorPreferences::SetShowPreferences(bool show)
+{
+    m_impl->config.setConfig(FILTER_VIEW, KEY_SHOW_PREFERENCES, show);
 }
 
 } // namespace FDE

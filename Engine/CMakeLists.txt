@@ -3,6 +3,8 @@ target_compile_definitions(FordEngine PRIVATE FordEngine_EXPORTS)
 
 target_sources(FordEngine PRIVATE 
     src/Core/Application.cpp
+    src/Project/ProjectDescriptor.cpp
+    src/Core/FileSystem.cpp
     src/Core/Layer.cpp
     src/Core/LayerStack.cpp
     src/Core/Log.cpp
@@ -47,6 +49,11 @@ target_link_libraries(FordEngine
         glad
         imgui
         glm
+        json11
 )
+
+if(WIN32)
+    target_link_libraries(FordEngine PRIVATE ole32)
+endif()
 
 add_subdirectory(Editor)

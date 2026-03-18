@@ -1,3 +1,7 @@
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 #include "FDE/Editor/EditorApplication.hpp"
 #include "FDE/Editor/EditorConsole.hpp"
 #include "FDE/Editor/EditorPreferences.hpp"
@@ -5,61 +9,150 @@
 #include "FDE/Renderer/BufferLayout.hpp"
 #include "FDE/Renderer/Renderer.hpp"
 #include "FDE/Renderer/VertexBuffer.hpp"
+#include "FDE/Core/FileSystem.hpp"
+#include "FDE/Core/Log.hpp"
+#include "FDE/Window/Window.hpp"
 #include <glad/glad.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include "imgui.h"
 #include "FDE/Renderer/Camera2D.hpp"
 #include "imgui_impl_opengl3.h"
 #include "stb_image.h"
-#include <filesystem>
+#include <algorithm>
 #include <cstdint>
+#include <filesystem>
+#include <vector>
 
 #if defined(_WIN32)
-#include <windows.h>
+#include <GLFW/glfw3.h>
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
+#include <shobjidl.h>
+#include <objbase.h>
 #endif
 
 namespace FDE
 {
 
-static std::string GetExecutableDirectory()
-{
-#if defined(_WIN32)
-    char path[MAX_PATH];
-    if (GetModuleFileNameA(nullptr, path, MAX_PATH) == 0)
-        return {};
-    std::filesystem::path p(path);
-    return p.parent_path().string();
-#else
-    return {};
-#endif
-}
-
-static std::string ResolveIconPath(const std::string& baseName)
-{
-    namespace fs = std::filesystem;
-    std::string cwdPath = "Resources/" + baseName;
-    if (fs::exists(cwdPath))
-        return fs::absolute(cwdPath).string();
-    std::string exeDir = GetExecutableDirectory();
-    if (!exeDir.empty())
-    {
-        std::string exePath = exeDir + "/Resources/" + baseName;
-        if (fs::exists(exePath))
-            return exePath;
-    }
-    return {};
-}
-
-EditorApplication::EditorApplication() : m_preferences(std::make_unique<EditorPreferences>())
+EditorApplication::EditorApplication(const std::string& initialProjectPath)
+    : m_preferences(std::make_unique<EditorPreferences>())
+    , m_showScene(m_preferences->GetShowScene())
+    , m_showConsole(m_preferences->GetShowConsole())
+    , m_showContentView(m_preferences->GetShowContent())
+    , m_showPreferences(m_preferences->GetShowPreferences())
 {
     if (!Initialize())
     {
         FDE_LOG_CLIENT_ERROR("Failed to initialize EditorApplication");
+        return;
+    }
+
+    if (!initialProjectPath.empty())
+    {
+        std::string projectRoot = std::filesystem::path(initialProjectPath).parent_path().string();
+        if (ProjectDescriptor::IsProjectDirectory(projectRoot))
+        {
+            ProjectDescriptor desc;
+            std::string err;
+            if (ProjectDescriptor::LoadFromDirectory(projectRoot, desc, err))
+            {
+                FileSystem::SetProjectRoot(projectRoot);
+                m_projectDescriptor = desc;
+                m_preferences->SetLastProjectPath(projectRoot);
+                m_contentViewCurrentPath.clear();
+                FDE_LOG_CLIENT_INFO("Opened project from file: {} ({})", desc.name, projectRoot);
+            }
+            else
+            {
+                FDE_LOG_CLIENT_ERROR("Failed to load project: {}", err);
+            }
+        }
+        else
+        {
+            FDE_LOG_CLIENT_ERROR("Not a valid project: {}", initialProjectPath);
+        }
     }
 }
 
 namespace
 {
+
+#if defined(_WIN32)
+/// Shows native folder picker. Returns selected path or empty string on cancel.
+std::string ShowFolderPicker(void* parentWindow, const std::string& defaultPath)
+{
+    std::string result;
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE)
+        return result;
+
+    IFileOpenDialog* pDialog = nullptr;
+    hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_ALL, IID_IFileOpenDialog,
+                         reinterpret_cast<void**>(&pDialog));
+    if (FAILED(hr) || !pDialog)
+    {
+        CoUninitialize();
+        return result;
+    }
+
+    DWORD options;
+    pDialog->GetOptions(&options);
+    pDialog->SetOptions(options | FOS_PICKFOLDERS);
+
+    if (!defaultPath.empty())
+    {
+        std::filesystem::path path(defaultPath);
+        if (std::filesystem::exists(path))
+        {
+            wchar_t wpath[MAX_PATH];
+            if (MultiByteToWideChar(CP_UTF8, 0, path.string().c_str(), -1, wpath, MAX_PATH) > 0)
+            {
+                IShellItem* pItem = nullptr;
+                if (SUCCEEDED(SHCreateItemFromParsingName(wpath, nullptr, IID_IShellItem,
+                                                          reinterpret_cast<void**>(&pItem))))
+                {
+                    pDialog->SetFolder(pItem);
+                    pItem->Release();
+                }
+            }
+        }
+    }
+
+    HWND hwnd = parentWindow ? static_cast<HWND>(parentWindow) : nullptr;
+    hr = pDialog->Show(hwnd);
+
+    if (SUCCEEDED(hr))
+    {
+        IShellItem* pItem = nullptr;
+        hr = pDialog->GetResult(&pItem);
+        if (SUCCEEDED(hr) && pItem)
+        {
+            wchar_t* pPath = nullptr;
+            hr = pItem->GetDisplayName(SIGDN_FILESYSPATH, &pPath);
+            if (SUCCEEDED(hr) && pPath)
+            {
+                int len = WideCharToMultiByte(CP_UTF8, 0, pPath, -1, nullptr, 0, nullptr, nullptr);
+                if (len > 0)
+                {
+                    result.resize(len - 1);
+                    WideCharToMultiByte(CP_UTF8, 0, pPath, -1, result.data(), len, nullptr, nullptr);
+                }
+                CoTaskMemFree(pPath);
+            }
+            pItem->Release();
+        }
+    }
+
+    pDialog->Release();
+    CoUninitialize();
+    return result;
+}
+#else
+std::string ShowFolderPicker(void*, const std::string&)
+{
+    return {};
+}
+#endif
 
 void CreateTriangleMesh(std::shared_ptr<VertexArray>& outVAO)
 {
@@ -91,7 +184,7 @@ void EditorApplication::LoadTitleBarIcon()
     if (m_titleBarIconTexture)
         return;
 
-    std::string path = ResolveIconPath("FE.png");
+    std::string path = FileSystem::ResolveEngineResource("FE.png");
     if (path.empty())
         return;
 
@@ -112,6 +205,186 @@ void EditorApplication::LoadTitleBarIcon()
     m_titleBarIconTexture = reinterpret_cast<void*>(static_cast<intptr_t>(texId));
     m_titleBarIconWidth = static_cast<float>(w);
     m_titleBarIconHeight = static_cast<float>(h);
+}
+
+void EditorApplication::LoadContentViewIcons()
+{
+    auto loadIcon = [](const char* name) -> void* {
+        std::string path = FileSystem::ResolveEngineResource(name);
+        if (path.empty())
+            return nullptr;
+        int w, h, channels;
+        unsigned char* data = stbi_load(path.c_str(), &w, &h, &channels, 4);
+        if (!data)
+            return nullptr;
+        GLuint texId = 0;
+        glGenTextures(1, &texId);
+        glBindTexture(GL_TEXTURE_2D, texId);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        stbi_image_free(data);
+        return reinterpret_cast<void*>(static_cast<intptr_t>(texId));
+    };
+    if (!m_contentViewFolderIcon)
+        m_contentViewFolderIcon = loadIcon("folder.png");
+    if (!m_contentViewFileIcon)
+        m_contentViewFileIcon = loadIcon("file.png");
+}
+
+void EditorApplication::RenderContentView(ImGuiID dockspace_id)
+{
+    ImGui::SetNextWindowDockID(dockspace_id, ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Content"))
+    {
+        LoadContentViewIcons();
+
+        if (!FileSystem::HasProject())
+        {
+            ImGui::TextDisabled("No project open");
+            ImGui::End();
+            return;
+        }
+
+        std::string root = FileSystem::GetProjectRoot();
+        std::filesystem::path currentPath(root);
+        if (!m_contentViewCurrentPath.empty())
+            currentPath = std::filesystem::path(root) / m_contentViewCurrentPath;
+
+        if (!std::filesystem::exists(currentPath) || !std::filesystem::is_directory(currentPath))
+        {
+            m_contentViewCurrentPath.clear();
+            currentPath = root;
+        }
+
+        // Breadcrumb / navigation
+        if (!m_contentViewCurrentPath.empty())
+        {
+            std::filesystem::path parent = std::filesystem::path(m_contentViewCurrentPath).parent_path();
+            if (ImGui::Button(".."))
+                m_contentViewCurrentPath = parent.string();
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", m_contentViewCurrentPath.c_str());
+            ImGui::Separator();
+        }
+
+        int iconSizePref = m_preferences->GetContentIconSize();
+        float iconSize = static_cast<float>(iconSizePref < 24 ? 24 : (iconSizePref > 256 ? 256 : iconSizePref));
+        float cellWidth = iconSize + 24.0f;
+        void* folderIcon = m_contentViewFolderIcon;
+        void* fileIcon = m_contentViewFileIcon;
+        ImVec2 iconSizeVec(iconSize, iconSize);
+
+        auto isHiddenFile = [](const std::string& name) -> bool {
+            return name == ".fproject" || name == "FordEditor.cfg" || name == "imgui.ini";
+        };
+
+        std::vector<std::string> folders;
+        std::vector<std::string> files;
+
+        // Two-phase: collect paths first, then classify. Reduces time holding
+        // directory_iterator open and avoids crashes when directory is modified during iteration.
+        std::vector<std::string> entryNames;
+        try
+        {
+            for (const auto& entry : std::filesystem::directory_iterator(currentPath))
+            {
+                try
+                {
+                    std::string name = entry.path().filename().string();
+                    if (!name.empty() && name[0] != '.')
+                        entryNames.push_back(std::move(name));
+                }
+                catch (...)
+                {
+                    continue;
+                }
+            }
+        }
+        catch (...)
+        {
+            entryNames.clear();
+            m_contentViewCurrentPath.clear();
+        }
+
+        for (const std::string& name : entryNames)
+        {
+            try
+            {
+                std::filesystem::path fullPath = currentPath / name;
+                if (!std::filesystem::exists(fullPath))
+                    continue;
+                if (std::filesystem::is_directory(fullPath))
+                    folders.push_back(name);
+                else if (std::filesystem::is_regular_file(fullPath))
+                {
+                    if (!isHiddenFile(name))
+                        files.push_back(name);
+                }
+            }
+            catch (...)
+            {
+                continue;
+            }
+        }
+
+        std::sort(folders.begin(), folders.end());
+        std::sort(files.begin(), files.end());
+
+        ImGui::BeginChild("ContentList", ImVec2(0, 0), false);
+
+        float availWidth = ImGui::GetContentRegionAvail().x;
+        int numColumns = availWidth > 0 ? static_cast<int>(availWidth / cellWidth) : 1;
+        if (numColumns < 1)
+            numColumns = 1;
+
+        auto drawItem = [&](const std::string& name, void* icon, bool isFolder) {
+            ImGui::BeginGroup();
+            float cursorX = ImGui::GetCursorPosX();
+            if (icon)
+            {
+                ImGui::SetCursorPosX(cursorX + (cellWidth - iconSize) * 0.5f);
+                ImGui::Image(icon, iconSizeVec);
+            }
+            else
+            {
+                ImGui::SetCursorPosX(cursorX + (cellWidth - 24.0f) * 0.5f);
+                ImGui::Text(isFolder ? "[D]" : "[F]");
+            }
+            ImGui::SetCursorPosX(cursorX);
+            ImGui::PushTextWrapPos(cursorX + cellWidth);
+            ImGui::TextUnformatted(name.c_str());
+            ImGui::PopTextWrapPos();
+            ImGui::EndGroup();
+
+            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0) && isFolder)
+            {
+                m_contentViewCurrentPath = m_contentViewCurrentPath.empty()
+                                               ? name
+                                               : (m_contentViewCurrentPath + "/" + name);
+            }
+        };
+
+        int col = 0;
+        for (const auto& name : folders)
+        {
+            if (col > 0)
+                ImGui::SameLine(col * cellWidth);
+            drawItem(name, folderIcon, true);
+            col = (col + 1) % numColumns;
+        }
+        for (const auto& name : files)
+        {
+            if (col > 0)
+                ImGui::SameLine(col * cellWidth);
+            drawItem(name, fileIcon, false);
+            col = (col + 1) % numColumns;
+        }
+
+        ImGui::EndChild();
+    }
+    ImGui::End();
 }
 
 WindowSpec EditorApplication::GetWindowSpec() const
@@ -139,6 +412,10 @@ void EditorApplication::OnRunEnd()
 {
     if (Window* w = GetWindow())
         m_preferences->SetMaximized(w->IsMaximized());
+    m_preferences->SetShowScene(m_showScene);
+    m_preferences->SetShowContent(m_showContentView);
+    m_preferences->SetShowConsole(m_showConsole);
+    m_preferences->SetShowPreferences(m_showPreferences);
 }
 
 void EditorApplication::OnUpdate()
@@ -182,11 +459,24 @@ void EditorApplication::RenderMainUI()
         RenderPreferencesWindow(dockspace_id);
     if (m_showConsole)
         EditorConsole::Render(dockspace_id);
+    if (m_showContentView)
+        RenderContentView(dockspace_id);
 
     if (ImGui::BeginMenuBar())
     {
         if (ImGui::BeginMenu("File"))
         {
+            if (ImGui::MenuItem("New Project"))
+                OnNewProject();
+            if (ImGui::MenuItem("Open Project"))
+                OnOpenProject();
+            if (ImGui::MenuItem("Save Project", nullptr, false, FileSystem::HasProject()))
+                OnSaveProject();
+#if defined(_WIN32)
+            ImGui::Separator();
+            if (ImGui::MenuItem("Register .fproject association"))
+                OnRegisterFileAssociation();
+#endif
             ImGui::Separator();
             if (ImGui::MenuItem("Exit"))
             {
@@ -204,6 +494,7 @@ void EditorApplication::RenderMainUI()
         if (ImGui::BeginMenu("View"))
         {
             ImGui::MenuItem("Scene", nullptr, &m_showScene);
+            ImGui::MenuItem("Content", nullptr, &m_showContentView);
             ImGui::MenuItem("Console", nullptr, &m_showConsole);
             ImGui::MenuItem("Preferences", nullptr, &m_showPreferences);
             ImGui::EndMenu();
@@ -297,6 +588,188 @@ void EditorApplication::RenderTitleBar()
     ImGui::End();
 }
 
+void EditorApplication::OnNewProject()
+{
+    void* parentHwnd = nullptr;
+#if defined(_WIN32)
+    if (Window* w = GetWindow(); w && w->GetGLFWWindow())
+    {
+        parentHwnd = glfwGetWin32Window(w->GetGLFWWindow());
+    }
+#endif
+    std::string defaultPath = m_preferences->GetLastProjectPath();
+    if (defaultPath.empty())
+        defaultPath = std::filesystem::current_path().string();
+    std::string parentDir = std::filesystem::path(defaultPath).parent_path().string();
+
+    std::string selected = ShowFolderPicker(parentHwnd, parentDir);
+    if (selected.empty())
+        return;
+
+    std::string projectRoot = selected;
+    if (ProjectDescriptor::IsProjectDirectory(projectRoot))
+    {
+        FDE_LOG_CLIENT_WARN("Directory already contains a project: {}", projectRoot);
+        return;
+    }
+
+    std::string name = std::filesystem::path(projectRoot).filename().string();
+    if (name.empty())
+        name = "NewProject";
+
+    ProjectDescriptor desc;
+    desc.name = name;
+    desc.version = "1.0.0";
+    desc.schemaVersion = 1;
+
+    std::string err;
+    if (!desc.SaveToDirectory(projectRoot, err))
+    {
+        FDE_LOG_CLIENT_ERROR("Failed to create project: {}", err);
+        return;
+    }
+
+    FileSystem::SetProjectRoot(projectRoot);
+    m_projectDescriptor = desc;
+    m_preferences->SetLastProjectPath(projectRoot);
+    m_contentViewCurrentPath.clear();
+    FDE_LOG_CLIENT_INFO("Created project: {}", projectRoot);
+}
+
+void EditorApplication::OnOpenProject()
+{
+    void* parentHwnd = nullptr;
+#if defined(_WIN32)
+    if (Window* w = GetWindow(); w && w->GetGLFWWindow())
+    {
+        parentHwnd = glfwGetWin32Window(w->GetGLFWWindow());
+    }
+#endif
+    std::string defaultPath = m_preferences->GetLastProjectPath();
+    if (defaultPath.empty())
+        defaultPath = std::filesystem::current_path().string();
+
+    std::string selected = ShowFolderPicker(parentHwnd, defaultPath);
+    if (selected.empty())
+        return;
+
+    if (!ProjectDescriptor::IsProjectDirectory(selected))
+    {
+        FDE_LOG_CLIENT_ERROR("Not a valid project directory (missing .fproject): {}", selected);
+        return;
+    }
+
+    ProjectDescriptor desc;
+    std::string err;
+    if (!ProjectDescriptor::LoadFromDirectory(selected, desc, err))
+    {
+        FDE_LOG_CLIENT_ERROR("Failed to load project: {}", err);
+        return;
+    }
+
+    FileSystem::SetProjectRoot(selected);
+    m_projectDescriptor = desc;
+    m_preferences->SetLastProjectPath(selected);
+    m_contentViewCurrentPath.clear();
+    FDE_LOG_CLIENT_INFO("Opened project: {} ({})", desc.name, selected);
+}
+
+void EditorApplication::OnSaveProject()
+{
+    if (!FileSystem::HasProject() || !m_projectDescriptor)
+        return;
+
+    std::string root = FileSystem::GetProjectRoot();
+    std::string err;
+    if (!m_projectDescriptor->SaveToDirectory(root, err))
+    {
+        FDE_LOG_CLIENT_ERROR("Failed to save project: {}", err);
+        return;
+    }
+    FDE_LOG_CLIENT_INFO("Saved project: {}", root);
+}
+
+#if defined(_WIN32)
+namespace
+{
+bool RegisterFprojectAssociation()
+{
+    std::string exeDir = FileSystem::GetExecutableDirectory();
+    if (exeDir.empty())
+        return false;
+
+    std::string exePath = exeDir + "\\FordEditor.exe";
+    std::string iconPath = exeDir + "\\Resources\\FE.ico";
+
+    if (!std::filesystem::exists(exePath))
+        return false;
+
+    HKEY hKeyExt = nullptr;
+    HKEY hKeyProgId = nullptr;
+    HKEY hKeyIcon = nullptr;
+    HKEY hKeyCmd = nullptr;
+
+    const char* progId = "FordEditor.fproject";
+    const char* desc = "Ford Editor Project";
+
+    bool ok = false;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, "Software\\Classes\\.fproject", 0, nullptr,
+                       REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKeyExt, nullptr) == ERROR_SUCCESS)
+    {
+        RegSetValueExA(hKeyExt, nullptr, 0, REG_SZ, reinterpret_cast<const BYTE*>(progId),
+                      static_cast<DWORD>(strlen(progId) + 1));
+        RegCloseKey(hKeyExt);
+
+        if (RegCreateKeyExA(HKEY_CURRENT_USER, ("Software\\Classes\\" + std::string(progId)).c_str(),
+                           0, nullptr, REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKeyProgId,
+                           nullptr) == ERROR_SUCCESS)
+        {
+            RegSetValueExA(hKeyProgId, nullptr, 0, REG_SZ, reinterpret_cast<const BYTE*>(desc),
+                          static_cast<DWORD>(strlen(desc) + 1));
+
+            if (RegCreateKeyExA(hKeyProgId, "DefaultIcon", 0, nullptr, REG_OPTION_NON_VOLATILE,
+                               KEY_WRITE, nullptr, &hKeyIcon, nullptr) == ERROR_SUCCESS)
+            {
+                std::string iconVal = iconPath;
+                if (!std::filesystem::exists(iconPath))
+                    iconVal = exePath + ",0";
+                RegSetValueExA(hKeyIcon, nullptr, 0, REG_SZ,
+                              reinterpret_cast<const BYTE*>(iconVal.c_str()),
+                              static_cast<DWORD>(iconVal.size() + 1));
+                RegCloseKey(hKeyIcon);
+            }
+
+            if (RegCreateKeyExA(hKeyProgId, "shell\\open\\command", 0, nullptr,
+                                REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKeyCmd,
+                                nullptr) == ERROR_SUCCESS)
+            {
+                std::string cmd = "\"" + exePath + "\" \"%1\"";
+                RegSetValueExA(hKeyCmd, nullptr, 0, REG_SZ,
+                              reinterpret_cast<const BYTE*>(cmd.c_str()),
+                              static_cast<DWORD>(cmd.size() + 1));
+                RegCloseKey(hKeyCmd);
+            }
+            RegCloseKey(hKeyProgId);
+            ok = true;
+        }
+    }
+    return ok;
+}
+} // namespace
+#endif
+
+void EditorApplication::OnRegisterFileAssociation()
+{
+#if defined(_WIN32)
+    if (RegisterFprojectAssociation())
+        FDE_LOG_CLIENT_INFO("Registered .fproject association. You can now double-click .fproject files to open them.");
+    else
+        FDE_LOG_CLIENT_ERROR("Failed to register .fproject association.");
+#else
+    (void)this;
+#endif
+}
+
 void EditorApplication::RenderPreferencesWindow(ImGuiID dockspace_id)
 {
     if (!m_showPreferences)
@@ -306,12 +779,14 @@ void EditorApplication::RenderPreferencesWindow(ImGuiID dockspace_id)
     static int s_width = 1920;
     static int s_height = 1080;
     static bool s_maximized = false;
+    static int s_contentIconSize = 48;
 
     if (m_showPreferences && !s_wasOpen)
     {
         s_width = m_preferences->GetWindowWidth();
         s_height = m_preferences->GetWindowHeight();
         s_maximized = m_preferences->GetMaximized();
+        s_contentIconSize = m_preferences->GetContentIconSize();
         s_wasOpen = true;
     }
     if (!m_showPreferences)
@@ -320,6 +795,16 @@ void EditorApplication::RenderPreferencesWindow(ImGuiID dockspace_id)
     ImGui::SetNextWindowDockID(dockspace_id, ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Preferences", &m_showPreferences))
     {
+        if (ImGui::CollapsingHeader("Content", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::Text("Content View icon size");
+            ImGui::SetNextItemWidth(120);
+            if (ImGui::SliderInt("##ContentIconSize", &s_contentIconSize, 24, 256, "%d px"))
+            {
+                s_contentIconSize = (s_contentIconSize < 24) ? 24 : (s_contentIconSize > 256 ? 256 : s_contentIconSize);
+                m_preferences->SetContentIconSize(s_contentIconSize);
+            }
+        }
         if (ImGui::CollapsingHeader("Window", ImGuiTreeNodeFlags_DefaultOpen))
         {
             ImGui::Text("Default Resolution");

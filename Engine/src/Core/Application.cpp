@@ -41,6 +41,7 @@ void Application::Run()
     while (!m_window->ShouldClose())
     {
         m_window->OnUpdate();
+        OnBeforeImGuiNewFrame();
         m_imgui->BeginFrame();
 
         for (auto& layer : m_layerStack)

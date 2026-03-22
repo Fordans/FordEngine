@@ -4,6 +4,7 @@
 #include "FDE/Scene/Object.hpp"
 #include "FDE/Scene/Scene.hpp"
 #include "FDE/Scene/Scene2D.hpp"
+#include "FDE/Scene/Scene3D.hpp"
 #include "FDE/Scene/World.hpp"
 #include <glm/glm.hpp>
 #include <json11.hpp>
@@ -26,7 +27,10 @@ constexpr const char* KEY_SCENES = "scenes";
 constexpr const char* KEY_SCENE_NAME = "name";
 constexpr const char* KEY_SCENE_TYPE = "type";
 constexpr const char* KEY_SCENE_TYPE_2D = "Scene2D";
+constexpr const char* KEY_SCENE_TYPE_3D = "Scene3D";
 constexpr const char* KEY_SCENE_TYPE_BASE = "Scene";
+constexpr const char* KEY_TRANSFORM3D = "transform3D";
+constexpr const char* MESH_BUILTIN_CUBE = "builtin:cube";
 constexpr const char* KEY_OBJECTS = "objects";
 constexpr const char* KEY_TAG = "tag";
 constexpr const char* KEY_TAG_NAME = "name";
@@ -207,8 +211,12 @@ static json11::Json SerializeWorld(const World& world)
 
         json11::Json::object sceneObj;
         sceneObj[KEY_SCENE_NAME] = sceneName;
-        sceneObj[KEY_SCENE_TYPE] =
-            (dynamic_cast<const Scene2D*>(scene) != nullptr) ? KEY_SCENE_TYPE_2D : KEY_SCENE_TYPE_BASE;
+        const char* sceneType = KEY_SCENE_TYPE_BASE;
+        if (dynamic_cast<const Scene2D*>(scene) != nullptr)
+            sceneType = KEY_SCENE_TYPE_2D;
+        else if (dynamic_cast<const Scene3D*>(scene) != nullptr)
+            sceneType = KEY_SCENE_TYPE_3D;
+        sceneObj[KEY_SCENE_TYPE] = sceneType;
 
         json11::Json::array objectsArr;
         const entt::registry& reg = scene->GetRegistry();
@@ -239,6 +247,27 @@ static json11::Json SerializeWorld(const World& world)
                 std::string meshVal = mesh->meshAsset;
                 if (meshVal.empty() && mesh->vertexArray && mesh->vertexArray->GetIndexCount() == 3)
                     meshVal = MESH_BUILTIN_TRIANGLE;
+                if (!meshVal.empty())
+                    objData[KEY_MESH] = meshVal;
+            }
+
+            if (const Transform3DComponent* t3 = reg.try_get<Transform3DComponent>(entity))
+            {
+                json11::Json::object transformObj;
+                transformObj[KEY_POSITION] =
+                    json11::Json::array{t3->position.x, t3->position.y, t3->position.z};
+                transformObj[KEY_ROTATION] =
+                    json11::Json::array{t3->rotation.x, t3->rotation.y, t3->rotation.z};
+                transformObj[KEY_SCALE] =
+                    json11::Json::array{t3->scale.x, t3->scale.y, t3->scale.z};
+                objData[KEY_TRANSFORM3D] = std::move(transformObj);
+            }
+
+            if (const Mesh3DComponent* mesh3 = reg.try_get<Mesh3DComponent>(entity))
+            {
+                std::string meshVal = mesh3->meshAsset;
+                if (meshVal.empty() && mesh3->vertexArray && mesh3->vertexArray->GetIndexCount() == 36)
+                    meshVal = MESH_BUILTIN_CUBE;
                 if (!meshVal.empty())
                     objData[KEY_MESH] = meshVal;
             }
@@ -280,10 +309,36 @@ static bool DeserializeWorld(const json11::Json& json, World& world)
             continue;
 
         std::string sceneName = itName->second.string_value();
-        bool is2D = (itType != sceneObj.end() && itType->second.is_string() &&
-                     itType->second.string_value() == KEY_SCENE_TYPE_2D);
+        std::string typeStr =
+            (itType != sceneObj.end() && itType->second.is_string()) ? itType->second.string_value() : "";
 
-        Scene* scene = is2D ? world.CreateScene2D(sceneName) : world.CreateScene(sceneName);
+        bool needScene3D = false;
+        auto itObjectsPeek = sceneObj.find(KEY_OBJECTS);
+        if (itObjectsPeek != sceneObj.end() && itObjectsPeek->second.is_array())
+        {
+            for (const json11::Json& peekObj : itObjectsPeek->second.array_items())
+            {
+                if (!peekObj.is_object())
+                    continue;
+                const auto& peekData = peekObj.object_items();
+                if (peekData.find(KEY_TRANSFORM3D) != peekData.end())
+                    needScene3D = true;
+                auto itPeekMesh = peekData.find(KEY_MESH);
+                if (itPeekMesh != peekData.end() && itPeekMesh->second.is_string()
+                    && itPeekMesh->second.string_value() == MESH_BUILTIN_CUBE)
+                    needScene3D = true;
+            }
+        }
+
+        Scene* scene = nullptr;
+        if (typeStr == KEY_SCENE_TYPE_BASE && !needScene3D)
+            scene = world.CreateScene(sceneName);
+        else if (typeStr == KEY_SCENE_TYPE_2D && !needScene3D)
+            scene = world.CreateScene2D(sceneName);
+        else if (typeStr == KEY_SCENE_TYPE_3D || needScene3D)
+            scene = world.CreateScene3D(sceneName);
+        else
+            scene = world.CreateScene3D(sceneName);
         if (!scene)
             continue;
 
@@ -349,14 +404,76 @@ static bool DeserializeWorld(const json11::Json& json, World& world)
                 scene->AddComponent<Transform2DComponent>(entity, transform);
             }
 
+            auto itTransform3D = objData.find(KEY_TRANSFORM3D);
+            if (itTransform3D != objData.end() && itTransform3D->second.is_object())
+            {
+                Transform3DComponent transform;
+                const auto& tObj = itTransform3D->second.object_items();
+
+                auto itPos = tObj.find(KEY_POSITION);
+                if (itPos != tObj.end() && itPos->second.is_array())
+                {
+                    const auto& arr = itPos->second.array_items();
+                    if (arr.size() >= 3)
+                    {
+                        transform.position.x = static_cast<float>(arr[0].number_value());
+                        transform.position.y = static_cast<float>(arr[1].number_value());
+                        transform.position.z = static_cast<float>(arr[2].number_value());
+                    }
+                }
+
+                auto itRot = tObj.find(KEY_ROTATION);
+                if (itRot != tObj.end() && itRot->second.is_array())
+                {
+                    const auto& arr = itRot->second.array_items();
+                    if (arr.size() >= 3)
+                    {
+                        transform.rotation.x = static_cast<float>(arr[0].number_value());
+                        transform.rotation.y = static_cast<float>(arr[1].number_value());
+                        transform.rotation.z = static_cast<float>(arr[2].number_value());
+                    }
+                }
+
+                auto itScale = tObj.find(KEY_SCALE);
+                if (itScale != tObj.end() && itScale->second.is_array())
+                {
+                    const auto& arr = itScale->second.array_items();
+                    if (arr.size() >= 3)
+                    {
+                        transform.scale.x = static_cast<float>(arr[0].number_value());
+                        transform.scale.y = static_cast<float>(arr[1].number_value());
+                        transform.scale.z = static_cast<float>(arr[2].number_value());
+                    }
+                }
+
+                scene->AddComponent<Transform3DComponent>(entity, transform);
+            }
+
             auto itMesh = objData.find(KEY_MESH);
             if (itMesh != objData.end() && itMesh->second.is_string())
             {
                 std::string meshVal = itMesh->second.string_value();
-                Mesh2DComponent meshComp;
-                meshComp.vertexArray = nullptr;
-                meshComp.meshAsset = meshVal;
-                scene->AddComponent<Mesh2DComponent>(entity, meshComp);
+                const bool useMesh3D = (dynamic_cast<Scene3D*>(scene) != nullptr) || (meshVal == MESH_BUILTIN_CUBE);
+                if (useMesh3D)
+                {
+                    Mesh3DComponent meshComp;
+                    meshComp.vertexArray = nullptr;
+                    meshComp.meshAsset = meshVal;
+                    scene->AddComponent<Mesh3DComponent>(entity, meshComp);
+                }
+                else
+                {
+                    Mesh2DComponent meshComp;
+                    meshComp.vertexArray = nullptr;
+                    meshComp.meshAsset = meshVal;
+                    scene->AddComponent<Mesh2DComponent>(entity, meshComp);
+                }
+            }
+
+            if (dynamic_cast<Scene3D*>(scene) && scene->HasComponent<Mesh3DComponent>(entity)
+                && !scene->HasComponent<Transform3DComponent>(entity))
+            {
+                scene->AddComponent<Transform3DComponent>(entity, Transform3DComponent{});
             }
         }
     }

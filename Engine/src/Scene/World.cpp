@@ -28,6 +28,18 @@ Scene2D* World::CreateScene2D(const std::string& name)
     return ptr;
 }
 
+Scene3D* World::CreateScene3D(const std::string& name)
+{
+    if (name.empty() || m_scenes.find(name) != m_scenes.end())
+    {
+        return nullptr;
+    }
+    auto scene = std::make_unique<Scene3D>(name);
+    Scene3D* ptr = scene.get();
+    m_scenes[name] = std::move(scene);
+    return ptr;
+}
+
 Scene* World::GetScene(const std::string& name)
 {
     auto it = m_scenes.find(name);
@@ -48,6 +60,16 @@ Scene2D* World::GetScene2D(const std::string& name)
 const Scene2D* World::GetScene2D(const std::string& name) const
 {
     return dynamic_cast<const Scene2D*>(GetScene(name));
+}
+
+Scene3D* World::GetScene3D(const std::string& name)
+{
+    return dynamic_cast<Scene3D*>(GetScene(name));
+}
+
+const Scene3D* World::GetScene3D(const std::string& name) const
+{
+    return dynamic_cast<const Scene3D*>(GetScene(name));
 }
 
 void World::DestroyScene(const std::string& name)

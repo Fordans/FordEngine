@@ -14,6 +14,7 @@ target_sources(FordEngine PRIVATE
     src/Scene/Object.cpp
     src/Scene/Scene.cpp
     src/Scene/Scene2D.cpp
+    src/Scene/Scene3D.cpp
     src/Scene/World.cpp
     src/Project/ProjectDescriptor.cpp
     src/Core/FileSystem.cpp
@@ -27,7 +28,9 @@ target_sources(FordEngine PRIVATE
     src/Editor/EditorApplication.cpp
     src/Editor/EditorConsole.cpp
     src/Editor/EditorPreferences.cpp
+    src/Editor/EditorScene3DTools.cpp
     src/Renderer/Camera2D.cpp
+    src/Renderer/Camera3D.cpp
     src/Renderer/RenderCommand.cpp
     src/Renderer/Renderer.cpp
     src/Renderer/Shader.cpp

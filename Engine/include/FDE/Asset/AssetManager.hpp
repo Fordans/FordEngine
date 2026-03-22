@@ -40,6 +40,7 @@ class FDE_API AssetManager
 
     /// Resolve builtin / guid / Assets/ path into vertexArray; increments cache use.
     bool ResolveMesh2D(Mesh2DComponent& mesh);
+    bool ResolveMesh3D(Mesh3DComponent& mesh);
 
     std::shared_ptr<Shader> LoadShader(const AssetId& id);
     std::shared_ptr<Texture2DResource> LoadTexture2D(const AssetId& id);

@@ -47,6 +47,45 @@ void CreateBuiltinTriangle(std::shared_ptr<VertexArray>& outVAO)
     }
 }
 
+void CreateBuiltinCube(std::shared_ptr<VertexArray>& outVAO)
+{
+    const float s = 0.5f;
+    auto quad = [](std::vector<float>& v, float ax, float ay, float az, float bx, float by, float bz, float cx,
+                   float cy, float cz, float dx, float dy, float dz, float r, float g, float b) {
+        float tri[] = {ax, ay, az, r, g, b, bx, by, bz, r, g, b, cx, cy, cz, r, g, b,
+                       ax, ay, az, r, g, b, cx, cy, cz, r, g, b, dx, dy, dz, r, g, b};
+        v.insert(v.end(), std::begin(tri), std::end(tri));
+    };
+
+    std::vector<float> verts;
+    verts.reserve(36u * 6u);
+    // +Z (front)
+    quad(verts, -s, -s, s, s, -s, s, s, s, s, -s, s, s, 0.25f, 0.45f, 1.0f);
+    // -Z (back)
+    quad(verts, s, -s, -s, -s, -s, -s, -s, s, -s, s, s, -s, 0.25f, 0.85f, 0.35f);
+    // +X
+    quad(verts, s, -s, s, s, -s, -s, s, s, -s, s, s, s, 1.0f, 0.35f, 0.25f);
+    // -X
+    quad(verts, -s, -s, -s, -s, -s, s, -s, s, s, -s, s, -s, 1.0f, 0.85f, 0.25f);
+    // +Y (top)
+    quad(verts, -s, s, s, s, s, s, s, s, -s, -s, s, -s, 0.9f, 0.9f, 0.95f);
+    // -Y (bottom)
+    quad(verts, -s, -s, -s, s, -s, -s, s, -s, s, -s, -s, s, 0.45f, 0.3f, 0.65f);
+
+    std::vector<uint32_t> indices(36u);
+    for (uint32_t i = 0; i < 36u; ++i)
+        indices[i] = i;
+
+    auto vbo = VertexBuffer::Create(verts.data(), verts.size() * sizeof(float));
+    BufferLayout layout = {{ShaderDataType::Float3, "a_Position"}, {ShaderDataType::Float3, "a_Color"}};
+    outVAO = VertexArray::Create();
+    if (outVAO && vbo)
+    {
+        outVAO->AddVertexBuffer(vbo, layout);
+        outVAO->SetIndexBuffer(indices.data(), static_cast<uint32_t>(indices.size()));
+    }
+}
+
 } // namespace
 
 Texture2DResource::~Texture2DResource()
@@ -260,6 +299,26 @@ bool AssetManager::ResolveMesh2D(Mesh2DComponent& mesh)
     m_meshCache[key] = va;
     mesh.vertexArray = va;
     return true;
+}
+
+bool AssetManager::ResolveMesh3D(Mesh3DComponent& mesh)
+{
+    if (mesh.vertexArray && mesh.vertexArray->GetIndexCount() > 0)
+        return true;
+
+    if (mesh.meshAsset.empty())
+        return false;
+
+    if (mesh.meshAsset == "builtin:cube")
+    {
+        std::shared_ptr<VertexArray> va;
+        CreateBuiltinCube(va);
+        mesh.vertexArray = va;
+        return true;
+    }
+
+    FDE_LOG_CLIENT_WARN("Mesh3D asset not implemented: {}", mesh.meshAsset);
+    return false;
 }
 
 std::shared_ptr<Shader> AssetManager::LoadShader(const AssetId& id)

@@ -9,15 +9,18 @@
 #include "FDE/Renderer/VertexBuffer.hpp"
 #include "FDE/Scene/Components.hpp"
 #include "FDE/Scene/Object.hpp"
+#include "FDE/Scene/Scene3D.hpp"
 #include "FDE/Asset/AssetDatabase.hpp"
 #include "FDE/Asset/AssetManager.hpp"
 #include "FDE/Core/FileSystem.hpp"
 #include "FDE/Core/Log.hpp"
 #include "FDE/Window/Window.hpp"
 #include <glad/glad.h>
+#include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include "imgui.h"
 #include "FDE/Renderer/Camera2D.hpp"
+#include "FDE/Renderer/Shader.hpp"
 #include "imgui_impl_opengl3.h"
 #include "stb_image.h"
 #include <algorithm>
@@ -28,7 +31,6 @@
 #include <vector>
 
 #if defined(_WIN32)
-#include <GLFW/glfw3.h>
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
 #include <shobjidl.h>
@@ -37,6 +39,130 @@
 
 namespace
 {
+
+bool GlfwNavKeyDown(FDE::Window* window, int glfwKey)
+{
+    if (!window)
+        return false;
+    GLFWwindow* w = window->GetGLFWWindow();
+    if (!w)
+        return false;
+    return glfwGetKey(w, glfwKey) == GLFW_PRESS;
+}
+
+#if defined(_WIN32)
+void Win32ClipCursorToSceneRect(float minX, float minY, float maxX, float maxY)
+{
+    RECT r;
+    r.left = static_cast<LONG>(std::floor(minX));
+    r.top = static_cast<LONG>(std::floor(minY));
+    r.right = static_cast<LONG>(std::ceil(maxX));
+    r.bottom = static_cast<LONG>(std::ceil(maxY));
+    if (r.right > r.left && r.bottom > r.top)
+        ::ClipCursor(&r);
+    else
+        ::ClipCursor(nullptr);
+}
+
+void Win32ReleaseClipCursor()
+{
+    ::ClipCursor(nullptr);
+}
+#endif
+
+GLuint s_editorGrid3DVao = 0;
+GLuint s_editorGrid3DVbo = 0;
+
+/// XZ ground grid (y=0), same RGBA as ImGui 2D overlay: (128,128,140,200).
+void DrawEditorSceneGrid3D(const FDE::Camera3D& camera, uint32_t viewportWidth, uint32_t viewportHeight,
+                           float cellSize)
+{
+    if (viewportWidth == 0 || viewportHeight == 0)
+        return;
+    if (cellSize <= 0.001f)
+        cellSize = 0.5f;
+
+    const glm::vec3 eye = camera.GetPosition();
+    const float distXZ = std::sqrt(eye.x * eye.x + eye.z * eye.z);
+    float halfSpan = std::max(20.f, distXZ * 1.25f + 30.f);
+    halfSpan = std::min(halfSpan, 400.f);
+
+    constexpr float kMaxCellsPerAxis = 512.f;
+    const float maxWorldSpan = kMaxCellsPerAxis * cellSize;
+    const float span = std::min(halfSpan * 2.f, maxWorldSpan);
+
+    const float xCenter = eye.x;
+    const float zCenter = eye.z;
+    const float x0 = std::floor((xCenter - span * 0.5f) / cellSize) * cellSize;
+    const float z0 = std::floor((zCenter - span * 0.5f) / cellSize) * cellSize;
+    const float x1 = x0 + span;
+    const float z1 = z0 + span;
+
+    std::vector<float> verts;
+    verts.reserve(static_cast<size_t>(kMaxCellsPerAxis) * 12u * 2u);
+    for (float z = z0; z <= z1 + 1e-4f; z += cellSize)
+    {
+        verts.push_back(x0);
+        verts.push_back(0.f);
+        verts.push_back(z);
+        verts.push_back(x1);
+        verts.push_back(0.f);
+        verts.push_back(z);
+    }
+    for (float x = x0; x <= x1 + 1e-4f; x += cellSize)
+    {
+        verts.push_back(x);
+        verts.push_back(0.f);
+        verts.push_back(z0);
+        verts.push_back(x);
+        verts.push_back(0.f);
+        verts.push_back(z1);
+    }
+
+    if (verts.empty())
+        return;
+
+    if (s_editorGrid3DVao == 0)
+    {
+        glGenVertexArrays(1, &s_editorGrid3DVao);
+        glGenBuffers(1, &s_editorGrid3DVbo);
+    }
+    glBindVertexArray(s_editorGrid3DVao);
+    glBindBuffer(GL_ARRAY_BUFFER, s_editorGrid3DVbo);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizei>(verts.size() * sizeof(float)), verts.data(),
+                 GL_STREAM_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, nullptr);
+
+    FDE::Shader* simple = FDE::Renderer::GetSimpleShader();
+    if (!simple)
+    {
+        glBindVertexArray(0);
+        return;
+    }
+
+    FDE::Renderer::SetShader(simple);
+    simple->Bind();
+    simple->SetVec4("u_Color", glm::vec4(128.f / 255.f, 128.f / 255.f, 140.f / 255.f, 200.f / 255.f));
+
+    const glm::mat4 model(1.f);
+    const glm::mat4 view = camera.GetViewMatrix();
+    const glm::mat4 proj = camera.GetProjectionMatrix(viewportWidth, viewportHeight);
+    FDE::Renderer::SetMVP(model, view, proj);
+
+    const GLboolean blendWas = glIsEnabled(GL_BLEND);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    const GLuint lineVertCount = static_cast<GLuint>(verts.size() / 3u);
+    FDE::Renderer::DrawLines(lineVertCount);
+
+    if (!blendWas)
+        glDisable(GL_BLEND);
+
+    glBindVertexArray(0);
+    FDE::Renderer::UseDefaultShader();
+}
 
 void CreateTriangleMesh(std::shared_ptr<FDE::VertexArray>& outVAO)
 {
@@ -57,30 +183,47 @@ void CreateTriangleMesh(std::shared_ptr<FDE::VertexArray>& outVAO)
     }
 }
 
-FDE::Scene2D* CreateDefaultScene(FDE::World* world)
+FDE::Scene3D* CreateDefaultScene3D(FDE::World* world)
 {
     if (!world)
         return nullptr;
-    FDE::Scene2D* scene = world->CreateScene2D("Default");
+    FDE::Scene3D* scene = world->CreateScene3D("Default");
     if (!scene)
         return nullptr;
     world->SetActiveScene(scene);
-    std::shared_ptr<FDE::VertexArray> triangleVAO;
-    CreateTriangleMesh(triangleVAO);
-    FDE::Object triangleObj = scene->CreateObject();
-    scene->AddComponent<FDE::TagComponent>(triangleObj, "Triangle");
-    scene->AddComponent<FDE::Transform2DComponent>(triangleObj);
-    FDE::Mesh2DComponent meshComp;
-    meshComp.vertexArray = triangleVAO;
-    meshComp.meshAsset = "builtin:triangle";
-    scene->AddComponent<FDE::Mesh2DComponent>(triangleObj, meshComp);
+    FDE::Object cubeObj = scene->CreateObject();
+    scene->AddComponent<FDE::TagComponent>(cubeObj, "Cube");
+    scene->AddComponent<FDE::Transform3DComponent>(cubeObj);
+    FDE::Mesh3DComponent meshComp;
+    meshComp.vertexArray = nullptr;
+    meshComp.meshAsset = "builtin:cube";
+    scene->AddComponent<FDE::Mesh3DComponent>(cubeObj, meshComp);
     return scene;
+}
+
+void ResolveMesh3DInScene(FDE::Scene* scene, FDE::AssetManager* assets)
+{
+    if (!scene)
+        return;
+    FDE::AssetManager fallback;
+    FDE::AssetManager* use = assets ? assets : &fallback;
+    auto& reg = scene->GetRegistry();
+    for (auto entity : reg.view<FDE::Mesh3DComponent>())
+    {
+        auto& mesh = reg.get<FDE::Mesh3DComponent>(entity);
+        if (mesh.vertexArray && mesh.vertexArray->GetIndexCount() > 0)
+            continue;
+        use->ResolveMesh3D(mesh);
+    }
 }
 
 void ResolvePendingMeshes(FDE::World* world, FDE::AssetManager* assets)
 {
     if (!world)
         return;
+    FDE::AssetManager fallback;
+    FDE::AssetManager* resolve3d = assets ? assets : &fallback;
+
     for (const std::string& name : world->GetSceneNames())
     {
         FDE::Scene* scene = world->GetScene(name);
@@ -100,6 +243,18 @@ void ResolvePendingMeshes(FDE::World* world, FDE::AssetManager* assets)
                 CreateTriangleMesh(va);
                 mesh.vertexArray = va;
             }
+        }
+
+        FDE::Scene3D* scene3d = world->GetScene3D(name);
+        if (!scene3d)
+            continue;
+        auto view3d = scene3d->GetRegistry().view<FDE::Mesh3DComponent>();
+        for (auto entity : view3d)
+        {
+            auto& mesh = view3d.get<FDE::Mesh3DComponent>(entity);
+            if (mesh.vertexArray && mesh.vertexArray->GetIndexCount() > 0)
+                continue;
+            resolve3d->ResolveMesh3D(mesh);
         }
     }
 }
@@ -138,9 +293,9 @@ EditorApplication::EditorApplication(const std::string& initialProjectPath)
                 m_projectDescriptor = desc;
                 m_preferences->SetLastProjectPath(projectRoot);
                 m_contentViewCurrentPath.clear();
-                m_scene2D = dynamic_cast<Scene2D*>(m_world->GetActiveScene());
+                SyncEditorActiveScenes();
                 RefreshAssetPipeline();
-                // Defer CreateDefaultScene to OnWindowCreated - OpenGL not ready in constructor
+                // Defer mesh GPU resolve to OnWindowCreated — OpenGL not ready in constructor
                 FDE_LOG_CLIENT_INFO("Opened project from file: {} ({})", desc.name, projectRoot);
             }
             else
@@ -458,6 +613,17 @@ WindowSpec EditorApplication::GetWindowSpec() const
     return spec;
 }
 
+void EditorApplication::SyncEditorActiveScenes()
+{
+    m_scene2D = nullptr;
+    m_scene3D = nullptr;
+    if (!m_world)
+        return;
+    Scene* active = m_world->GetActiveScene();
+    m_scene2D = dynamic_cast<Scene2D*>(active);
+    m_scene3D = dynamic_cast<Scene3D*>(active);
+}
+
 void EditorApplication::OnWindowCreated()
 {
     GetLayerStack().PushOverlay(std::make_unique<ImGuiLayer>());
@@ -466,13 +632,17 @@ void EditorApplication::OnWindowCreated()
     if (!m_world)
     {
         m_world = std::make_unique<World>();
-        m_scene2D = CreateDefaultScene(m_world.get());
+        CreateDefaultScene3D(m_world.get());
+        SyncEditorActiveScenes();
     }
     else
     {
-        m_scene2D = dynamic_cast<Scene2D*>(m_world->GetActiveScene());
-        if (!m_scene2D && m_world->GetSceneNames().empty())
-            m_scene2D = CreateDefaultScene(m_world.get());
+        SyncEditorActiveScenes();
+        if (!m_scene2D && !m_scene3D && m_world->GetSceneNames().empty())
+        {
+            CreateDefaultScene3D(m_world.get());
+            SyncEditorActiveScenes();
+        }
         ResolvePendingMeshes(m_world.get(), m_assetManager.get());
     }
 
@@ -480,8 +650,37 @@ void EditorApplication::OnWindowCreated()
         GetWindow()->Maximize();
 }
 
+void EditorApplication::OnBeforeImGuiNewFrame()
+{
+#if defined(_WIN32)
+    ImGuiIO& io = ImGui::GetIO();
+    if (m_sceneViewMouseCaptured)
+        io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+    else
+        io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
+#endif
+}
+
+void EditorApplication::ReleaseSceneViewMouseCapture()
+{
+#if defined(_WIN32)
+    Win32ReleaseClipCursor();
+#endif
+    if (Window* w = GetWindow())
+    {
+        if (GLFWwindow* gw = w->GetGLFWWindow())
+        {
+            if (glfwRawMouseMotionSupported())
+                glfwSetInputMode(gw, GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
+            glfwSetInputMode(gw, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        }
+    }
+    m_sceneViewMouseCaptured = false;
+}
+
 void EditorApplication::OnRunEnd()
 {
+    ReleaseSceneViewMouseCapture();
     if (Window* w = GetWindow())
         m_preferences->SetMaximized(w->IsMaximized());
     m_preferences->SetShowScene(m_showScene);
@@ -496,6 +695,8 @@ void EditorApplication::OnUpdate()
 {
     if (m_assetManager)
         m_assetManager->ProcessAsyncUploads();
+    if (!m_showScene && m_sceneViewMouseCaptured)
+        ReleaseSceneViewMouseCapture();
     RenderMainUI();
     // Title bar drag: exclude right button area
     if (Window* w = GetWindow(); w)
@@ -728,8 +929,10 @@ void EditorApplication::OnNewProject()
 
     // Reset world to default for new project
     m_world = std::make_unique<World>();
-    m_scene2D = CreateDefaultScene(m_world.get());
+    CreateDefaultScene3D(m_world.get());
+    SyncEditorActiveScenes();
     m_selectedObject = Object{};
+    m_scene3DGizmoState = Scene3DGizmoState{};
 
     FDE_LOG_CLIENT_INFO("Created project: {}", projectRoot);
 }
@@ -772,11 +975,15 @@ void EditorApplication::OnOpenProject()
     m_preferences->SetLastProjectPath(selected);
     m_contentViewCurrentPath.clear();
     RefreshAssetPipeline();
-    m_scene2D = dynamic_cast<Scene2D*>(m_world->GetActiveScene());
-    if (!m_scene2D && m_world->GetSceneNames().empty())
-        m_scene2D = CreateDefaultScene(m_world.get());
+    SyncEditorActiveScenes();
+    if (!m_scene2D && !m_scene3D && m_world->GetSceneNames().empty())
+    {
+        CreateDefaultScene3D(m_world.get());
+        SyncEditorActiveScenes();
+    }
     ResolvePendingMeshes(m_world.get(), m_assetManager.get());
     m_selectedObject = Object{};
+    m_scene3DGizmoState = Scene3DGizmoState{};
     FDE_LOG_CLIENT_INFO("Opened project: {} ({})", desc.name, selected);
 }
 
@@ -886,6 +1093,7 @@ void EditorApplication::RenderPreferencesWindow(ImGuiID dockspace_id)
     static int s_height = 1080;
     static bool s_maximized = false;
     static int s_contentIconSize = 48;
+    static float s_scene3dNavSensitivity = 1.0f;
 
     if (m_showPreferences && !s_wasOpen)
     {
@@ -893,6 +1101,7 @@ void EditorApplication::RenderPreferencesWindow(ImGuiID dockspace_id)
         s_height = m_preferences->GetWindowHeight();
         s_maximized = m_preferences->GetMaximized();
         s_contentIconSize = m_preferences->GetContentIconSize();
+        s_scene3dNavSensitivity = m_preferences->GetScene3DNavSensitivity();
         s_wasOpen = true;
     }
     if (!m_showPreferences)
@@ -930,6 +1139,18 @@ void EditorApplication::RenderPreferencesWindow(ImGuiID dockspace_id)
                 m_preferences->SetMaximized(s_maximized);
             ImGui::SameLine();
             ImGui::TextDisabled("(Takes effect on next launch)");
+        }
+        if (ImGui::CollapsingHeader("3D Scene view", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::TextUnformatted("Navigation sensitivity");
+            ImGui::SetNextItemWidth(220.0f);
+            if (ImGui::SliderFloat("##Scene3DNavSens", &s_scene3dNavSensitivity, 0.05f, 5.0f, "%.2f",
+                                   ImGuiSliderFlags_Logarithmic))
+            {
+                m_preferences->SetScene3DNavSensitivity(s_scene3dNavSensitivity);
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Mouse look, WASD/QE move, and scroll dolly (1.0 = default)");
         }
     }
     ImGui::End();
@@ -988,6 +1209,24 @@ void EditorApplication::RenderDetailView(ImGuiID dockspace_id)
                 ImGui::TextDisabled("(Mesh component - no editable properties)");
             }
         }
+
+        if (auto* transform = scene->GetComponent<Transform3DComponent>(m_selectedObject))
+        {
+            if (ImGui::CollapsingHeader("Transform 3D", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::DragFloat3("Position", &transform->position.x, 0.05f);
+                ImGui::DragFloat3("Rotation (rad)", &transform->rotation.x, 0.01f);
+                ImGui::DragFloat3("Scale", &transform->scale.x, 0.05f, 0.001f, 1000.0f);
+            }
+        }
+
+        if (scene->HasComponent<Mesh3DComponent>(m_selectedObject))
+        {
+            if (ImGui::CollapsingHeader("Mesh3D"))
+            {
+                ImGui::TextDisabled("(Mesh component - no editable properties)");
+            }
+        }
     }
     ImGui::End();
 }
@@ -1030,6 +1269,71 @@ void EditorApplication::RenderSceneTreeView(ImGuiID dockspace_id)
         ImGui::EndChild();
     }
     ImGui::End();
+}
+
+void EditorApplication::ProcessSceneViewportCameraInput(bool allowSceneCameraInput, uint32_t width,
+                                                         uint32_t height)
+{
+    if (!allowSceneCameraInput || width == 0 || height == 0)
+        return;
+
+    ImGuiIO& io = ImGui::GetIO();
+    Scene* activeNav = m_world ? m_world->GetActiveScene() : nullptr;
+    const bool scene3DNav = activeNav && Scene3D::HasMesh3DDrawables(*activeNav);
+    if (!scene3DNav)
+        m_sceneCamera3D.ClearMouseLookSmoothing();
+
+    if (scene3DNav)
+    {
+        const float navSens = m_preferences->GetScene3DNavSensitivity();
+        const bool rmbNav = ImGui::IsMouseDown(ImGuiMouseButton_Right);
+        if (rmbNav)
+        {
+            m_sceneCamera3D.ApplyMouseLook(io.MouseDelta.x, io.MouseDelta.y, navSens);
+            FDE::Window* win = GetWindow();
+            float fwd = 0.0f;
+            float right = 0.0f;
+            float up = 0.0f;
+            if (GlfwNavKeyDown(win, GLFW_KEY_W) || GlfwNavKeyDown(win, GLFW_KEY_UP))
+                fwd += 1.0f;
+            if (GlfwNavKeyDown(win, GLFW_KEY_S) || GlfwNavKeyDown(win, GLFW_KEY_DOWN))
+                fwd -= 1.0f;
+            if (GlfwNavKeyDown(win, GLFW_KEY_D) || GlfwNavKeyDown(win, GLFW_KEY_RIGHT))
+                right -= 1.0f;
+            if (GlfwNavKeyDown(win, GLFW_KEY_A) || GlfwNavKeyDown(win, GLFW_KEY_LEFT))
+                right += 1.0f;
+            if (GlfwNavKeyDown(win, GLFW_KEY_Q))
+                up += 1.0f;
+            if (GlfwNavKeyDown(win, GLFW_KEY_E))
+                up -= 1.0f;
+            m_sceneCamera3D.ApplyFlyMovement(fwd, right, up, io.DeltaTime, navSens);
+        }
+        else
+            m_sceneCamera3D.ClearMouseLookSmoothing();
+
+        if (io.MouseWheel != 0.0f)
+            m_sceneCamera3D.Dolly(io.MouseWheel, navSens);
+    }
+    else if (m_scene2D)
+    {
+        if (ImGui::IsMouseDown(ImGuiMouseButton_Right))
+        {
+            float aspect = static_cast<float>(width) / static_cast<float>(height);
+            float halfWidth = 2.0f / m_sceneCamera.GetZoom();
+            float halfHeight = halfWidth / aspect;
+            float scaleX = (2.0f * halfWidth) / static_cast<float>(width);
+            float scaleY = (2.0f * halfHeight) / static_cast<float>(height);
+            m_sceneCamera.Pan(-io.MouseDelta.x * scaleX, io.MouseDelta.y * scaleY);
+        }
+        float wheel = io.MouseWheel;
+        if (wheel != 0.0f)
+        {
+            ImVec2 mousePos = io.MousePos;
+            float focusX = mousePos.x - m_sceneViewLastImageMin.x;
+            float focusY = mousePos.y - m_sceneViewLastImageMin.y;
+            m_sceneCamera.ZoomAt(wheel * 0.2f, focusX, focusY, width, height);
+        }
+    }
 }
 
 void EditorApplication::RenderSceneGridOverlay(ImVec2 itemMin, ImVec2 itemMax, uint32_t viewportWidth,
@@ -1098,7 +1402,22 @@ void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
             m_preferences->SetSceneGridSize(gridSize);
         }
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Grid cell size");
+            ImGui::SetTooltip("Grid cell size (2D overlay / 3D XZ plane)");
+
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Transform");
+        ImGui::SameLine();
+        {
+            int tfm = m_preferences->GetScene3DTransformMode();
+            ImGui::RadioButton("Pos##SceneTfm", &tfm, 0);
+            ImGui::SameLine();
+            ImGui::RadioButton("Rot##SceneTfm", &tfm, 1);
+            ImGui::SameLine();
+            ImGui::RadioButton("Scl##SceneTfm", &tfm, 2);
+            if (tfm != m_preferences->GetScene3DTransformMode())
+                m_preferences->SetScene3DTransformMode(tfm);
+        }
 
         ImVec2 viewportSize = ImGui::GetContentRegionAvail();
         if (viewportSize.x > 0 && viewportSize.y > 0)
@@ -1116,13 +1435,64 @@ void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
 
             if (m_sceneViewport->IsValid())
             {
+                Scene* activeForDraw = m_world ? m_world->GetActiveScene() : nullptr;
+                const bool hoverForInput =
+                    m_sceneViewLayoutCached
+                    && ImGui::IsMouseHoveringRect(m_sceneViewLastImageMin, m_sceneViewLastImageMax, false);
+                ProcessSceneViewportCameraInput(m_sceneViewMouseCaptured || hoverForInput, width, height);
+
+                if (m_sceneViewLayoutCached && activeForDraw && Scene3D::HasMesh3DDrawables(*activeForDraw))
+                {
+                    const Scene3DTransformMode tfMode =
+                        static_cast<Scene3DTransformMode>(m_preferences->GetScene3DTransformMode());
+                    const bool gizmoInteract =
+                        hoverForInput || m_sceneViewMouseCaptured || m_scene3DGizmoState.dragging;
+                    Scene3D_UpdateGizmoInteraction(tfMode, *activeForDraw, m_selectedObject, m_sceneCamera3D,
+                                                   width, height, m_sceneViewLastImageMin, m_sceneViewLastImageMax,
+                                                   m_scene3DGizmoState, gizmoInteract);
+                }
+
                 m_sceneViewport->Bind();
 
                 Renderer::SetClearColor(0.15f, 0.15f, 0.18f, 1.0f);
                 Renderer::Clear();
 
+                Renderer::UseDefaultShader();
                 glEnable(GL_DEPTH_TEST);
-                if (m_scene2D)
+                if (activeForDraw && Scene3D::HasMesh3DDrawables(*activeForDraw))
+                {
+                    if (showGrid)
+                        DrawEditorSceneGrid3D(m_sceneCamera3D, width, height, gridSize);
+                    ResolveMesh3DInScene(activeForDraw, m_assetManager.get());
+                    glDisable(GL_CULL_FACE);
+                    Scene3D::RenderMesh3DEntities(*activeForDraw, m_sceneCamera3D, width, height);
+
+                    const glm::mat4 viewMat = m_sceneCamera3D.GetViewMatrix();
+                    const glm::mat4 projMat = m_sceneCamera3D.GetProjectionMatrix(width, height);
+                    if (m_selectedObject.IsValid() && activeForDraw == m_selectedObject.GetScene())
+                    {
+                        if (auto* mesh3 = activeForDraw->GetComponent<Mesh3DComponent>(m_selectedObject))
+                        {
+                            if (auto* tr3 = activeForDraw->GetComponent<Transform3DComponent>(m_selectedObject))
+                            {
+                                if (mesh3->vertexArray && mesh3->vertexArray->GetIndexCount() > 0)
+                                {
+                                    glm::mat4 model = glm::translate(glm::mat4(1.0f), tr3->position);
+                                    model = glm::rotate(model, tr3->rotation.y, glm::vec3(0.0f, 1.0f, 0.0f));
+                                    model = glm::rotate(model, tr3->rotation.x, glm::vec3(1.0f, 0.0f, 0.0f));
+                                    model = glm::rotate(model, tr3->rotation.z, glm::vec3(0.0f, 0.0f, 1.0f));
+                                    model = glm::scale(model, tr3->scale);
+                                    DrawMesh3DSelectionOutline(model, viewMat, projMat, mesh3->vertexArray);
+                                }
+                            }
+                        }
+                        const Scene3DTransformMode tfMode =
+                            static_cast<Scene3DTransformMode>(m_preferences->GetScene3DTransformMode());
+                        DrawScene3DGizmo(tfMode, *activeForDraw, m_selectedObject, m_sceneCamera3D, width, height,
+                                         viewMat, projMat, m_scene3DGizmoState);
+                    }
+                }
+                else if (m_scene2D)
                 {
                     m_scene2D->Render(m_sceneCamera, width, height);
                 }
@@ -1136,34 +1506,79 @@ void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
 
                 ImVec2 imgMin = ImGui::GetItemRectMin();
                 ImVec2 imgMax = ImGui::GetItemRectMax();
-                RenderSceneGridOverlay(imgMin, imgMax, width, height);
+                if (m_scene2D)
+                    RenderSceneGridOverlay(imgMin, imgMax, width, height);
+
+                m_sceneViewLastImageMin = imgMin;
+                m_sceneViewLastImageMax = imgMax;
+                m_sceneViewLastWidth = width;
+                m_sceneViewLastHeight = height;
+                m_sceneViewLayoutCached = true;
 
                 ImGui::SetCursorScreenPos(imgMin);
                 ImGui::InvisibleButton("##SceneViewport", viewportSize);
-                bool viewportHovered = ImGui::IsItemHovered();
-                if (viewportHovered)
+                const bool viewportItemHovered =
+                    ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup);
+
+                if (activeForDraw && Scene3D::HasMesh3DDrawables(*activeForDraw)
+                    && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && viewportItemHovered
+                    && !m_sceneViewMouseCaptured)
                 {
-                    ImGuiIO& io = ImGui::GetIO();
-                    if (ImGui::IsMouseDown(ImGuiMouseButton_Right))
+                    const Scene3DTransformMode tfMode =
+                        static_cast<Scene3DTransformMode>(m_preferences->GetScene3DTransformMode());
+                    ImGuiIO& ioPick = ImGui::GetIO();
+                    Scene3D_OnViewportPrimaryClick(tfMode, *activeForDraw, m_selectedObject, m_sceneCamera3D, width,
+                                                   height, imgMin, imgMax,
+                                                   glm::vec2(ioPick.MousePos.x, ioPick.MousePos.y),
+                                                   m_scene3DGizmoState);
+                }
+
+                Window* appWin = GetWindow();
+                GLFWwindow* gw = appWin ? appWin->GetGLFWWindow() : nullptr;
+                if (!gw && m_sceneViewMouseCaptured)
+                    ReleaseSceneViewMouseCapture();
+                else if (gw && !glfwGetWindowAttrib(gw, GLFW_FOCUSED))
+                {
+                    if (m_sceneViewMouseCaptured)
+                        ReleaseSceneViewMouseCapture();
+                }
+                else if (gw)
+                {
+                    if (!ImGui::IsMouseDown(ImGuiMouseButton_Right))
                     {
-                        float aspect = static_cast<float>(width) / static_cast<float>(height);
-                        float halfWidth = 2.0f / m_sceneCamera.GetZoom();
-                        float halfHeight = halfWidth / aspect;
-                        float scaleX = (2.0f * halfWidth) / static_cast<float>(width);
-                        float scaleY = (2.0f * halfHeight) / static_cast<float>(height);
-                        m_sceneCamera.Pan(-io.MouseDelta.x * scaleX, io.MouseDelta.y * scaleY);
+                        if (m_sceneViewMouseCaptured)
+                            ReleaseSceneViewMouseCapture();
                     }
-                    float wheel = io.MouseWheel;
-                    if (wheel != 0.0f)
+                    else
                     {
-                        ImVec2 mousePos = io.MousePos;
-                        ImVec2 itemMin = ImGui::GetItemRectMin();
-                        float focusX = mousePos.x - itemMin.x;
-                        float focusY = mousePos.y - itemMin.y;
-                        m_sceneCamera.ZoomAt(wheel * 0.2f, focusX, focusY, width, height);
+                        if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && viewportItemHovered)
+                            m_sceneViewMouseCaptured = true;
+                        if (m_sceneViewMouseCaptured)
+                        {
+#if defined(_WIN32)
+                            glfwSetInputMode(gw, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+                            Win32ClipCursorToSceneRect(imgMin.x, imgMin.y, imgMax.x, imgMax.y);
+#else
+                            glfwSetInputMode(gw, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+#endif
+                            if (glfwRawMouseMotionSupported())
+                                glfwSetInputMode(gw, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+                        }
                     }
                 }
             }
+            else
+            {
+                m_sceneViewLayoutCached = false;
+                if (m_sceneViewMouseCaptured)
+                    ReleaseSceneViewMouseCapture();
+            }
+        }
+        else
+        {
+            m_sceneViewLayoutCached = false;
+            if (m_sceneViewMouseCaptured)
+                ReleaseSceneViewMouseCapture();
         }
     }
     ImGui::End();

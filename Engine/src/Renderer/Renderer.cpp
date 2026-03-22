@@ -135,6 +135,8 @@ void Renderer::SetMVP(const glm::mat4& model, const glm::mat4& view, const glm::
 {
     if (s_currentShader)
     {
+        // glUniform* affects the active program; must match s_currentShader.
+        s_currentShader->Bind();
         glm::mat4 mvp = projection * view * model;
         s_currentShader->SetMat4("u_MVP", mvp);
     }
@@ -153,6 +155,8 @@ Shader* Renderer::GetSimpleShader()
 void Renderer::UseDefaultShader()
 {
     s_currentShader = s_defaultShader.get();
+    if (s_currentShader)
+        s_currentShader->Bind();
 }
 
 } // namespace FDE

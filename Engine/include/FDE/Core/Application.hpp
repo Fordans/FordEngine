@@ -20,6 +20,8 @@ class FDE_API Application
     Application& operator=(const Application&) = delete;
 
     virtual void Run();
+    /// Called after glfwPollEvents, before ImGui NewFrame (e.g. sync io.ConfigFlags with capture state).
+    virtual void OnBeforeImGuiNewFrame() {}
     virtual void OnUpdate() {}
     virtual void OnWindowCreated() {}
     virtual void OnRunEnd() {}

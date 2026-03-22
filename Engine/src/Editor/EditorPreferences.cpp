@@ -35,6 +35,10 @@ constexpr const char* FILTER_SCENE = "Scene";
 constexpr const char* KEY_SHOW_GRID = "ShowGrid";
 constexpr const char* KEY_GRID_SIZE = "GridSize";
 constexpr float DEFAULT_GRID_SIZE = 1.0f;
+constexpr const char* KEY_SCENE3D_NAV_SENSITIVITY = "Scene3DNavSensitivity";
+constexpr float DEFAULT_SCENE3D_NAV_SENSITIVITY = 1.0f;
+constexpr const char* KEY_SCENE3D_TRANSFORM_MODE = "TransformMode";
+constexpr int DEFAULT_SCENE3D_TRANSFORM_MODE = 0;
 } // namespace
 
 EditorPreferences::EditorPreferences() : m_configPath("FordEditor.cfg"), m_impl(std::make_unique<ConfigImpl>(m_configPath))
@@ -258,6 +262,58 @@ float EditorPreferences::GetSceneGridSize() const
 void EditorPreferences::SetSceneGridSize(float size)
 {
     m_impl->config.setConfig(FILTER_SCENE, KEY_GRID_SIZE, size);
+}
+
+float EditorPreferences::GetScene3DNavSensitivity() const
+{
+    try
+    {
+        float v = m_impl->config.getConfig<float>(FILTER_SCENE, KEY_SCENE3D_NAV_SENSITIVITY);
+        if (v < 0.05f)
+            v = 0.05f;
+        if (v > 5.0f)
+            v = 5.0f;
+        return v;
+    }
+    catch (const std::exception&)
+    {
+        return DEFAULT_SCENE3D_NAV_SENSITIVITY;
+    }
+}
+
+void EditorPreferences::SetScene3DNavSensitivity(float value)
+{
+    if (value < 0.05f)
+        value = 0.05f;
+    if (value > 5.0f)
+        value = 5.0f;
+    m_impl->config.setConfig(FILTER_SCENE, KEY_SCENE3D_NAV_SENSITIVITY, value);
+}
+
+int EditorPreferences::GetScene3DTransformMode() const
+{
+    try
+    {
+        int m = m_impl->config.getConfig<int>(FILTER_SCENE, KEY_SCENE3D_TRANSFORM_MODE);
+        if (m < 0)
+            m = 0;
+        if (m > 2)
+            m = 2;
+        return m;
+    }
+    catch (const std::exception&)
+    {
+        return DEFAULT_SCENE3D_TRANSFORM_MODE;
+    }
+}
+
+void EditorPreferences::SetScene3DTransformMode(int mode)
+{
+    if (mode < 0)
+        mode = 0;
+    if (mode > 2)
+        mode = 2;
+    m_impl->config.setConfig(FILTER_SCENE, KEY_SCENE3D_TRANSFORM_MODE, mode);
 }
 
 } // namespace FDE

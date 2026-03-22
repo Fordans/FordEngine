@@ -53,6 +53,14 @@ class FDE_API EditorPreferences
     float GetSceneGridSize() const;
     void SetSceneGridSize(float size);
 
+    /// 3D Scene view: scales mouse look, WASD/QE move, and scroll dolly (1.0 = default).
+    float GetScene3DNavSensitivity() const;
+    void SetScene3DNavSensitivity(float value);
+
+    /// 0 = Position, 1 = Rotate, 2 = Scale (3D Scene transform gizmo).
+    int GetScene3DTransformMode() const;
+    void SetScene3DTransformMode(int mode);
+
   private:
     std::string m_configPath;
     struct ConfigImpl;

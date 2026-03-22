@@ -3,6 +3,7 @@
 #include "FDE/Export.hpp"
 #include "FDE/Scene/Scene.hpp"
 #include "FDE/Scene/Scene2D.hpp"
+#include "FDE/Scene/Scene3D.hpp"
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -28,6 +29,9 @@ class FDE_API World
     /// Create a new 2D scene. Returns nullptr if name already exists.
     Scene2D* CreateScene2D(const std::string& name);
 
+    /// Create a new 3D scene. Returns nullptr if name already exists.
+    Scene3D* CreateScene3D(const std::string& name);
+
     /// Get scene by name. Returns nullptr if not found.
     Scene* GetScene(const std::string& name);
     const Scene* GetScene(const std::string& name) const;
@@ -35,6 +39,10 @@ class FDE_API World
     /// Get 2D scene by name. Returns nullptr if not found or not a Scene2D.
     Scene2D* GetScene2D(const std::string& name);
     const Scene2D* GetScene2D(const std::string& name) const;
+
+    /// Get 3D scene by name. Returns nullptr if not found or not a Scene3D.
+    Scene3D* GetScene3D(const std::string& name);
+    const Scene3D* GetScene3D(const std::string& name) const;
 
     /// Remove and destroy a scene. Active scene is cleared if it was removed.
     void DestroyScene(const std::string& name);

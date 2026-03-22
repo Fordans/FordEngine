@@ -33,4 +33,19 @@ struct FDE_API Mesh2DComponent
     std::string meshAsset;
 };
 
+/// 3D transform: position, rotation (Euler radians XYZ), scale.
+struct FDE_API Transform3DComponent
+{
+    glm::vec3 position{0.0f, 0.0f, 0.0f};
+    glm::vec3 rotation{0.0f, 0.0f, 0.0f};
+    glm::vec3 scale{1.0f, 1.0f, 1.0f};
+};
+
+/// 3D mesh (same vertex layout as 2D colored mesh: position + RGB).
+struct FDE_API Mesh3DComponent
+{
+    std::shared_ptr<VertexArray> vertexArray;
+    std::string meshAsset;
+};
+
 } // namespace FDE

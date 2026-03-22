@@ -16,6 +16,7 @@ namespace FDE
 {
 
 class EditorPreferences;
+class AssetManager;
 
 class FDE_API EditorApplication : public Application
 {
@@ -51,6 +52,9 @@ class FDE_API EditorApplication : public Application
     void OnOpenProject();
     void OnSaveProject();
     void OnRegisterFileAssociation();
+    void RefreshAssetPipeline();
+    void OnRescanAssets();
+    void OnBuildAssetPack();
 
   private:
     std::unique_ptr<EditorPreferences> m_preferences;
@@ -72,6 +76,7 @@ class FDE_API EditorApplication : public Application
     Object m_selectedObject;  // Selected entity in Scene Tree (for future Inspector)
     Camera2D m_sceneCamera;
     std::optional<ProjectDescriptor> m_projectDescriptor;
+    std::unique_ptr<AssetManager> m_assetManager;
 };
 
 } // namespace FDE

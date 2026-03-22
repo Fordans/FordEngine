@@ -3,6 +3,7 @@
 // Ford Engine public header
 // This file exports commonly used API, making it easier for consumers to include
 
+#include "FDE/Asset/MeshImporter.hpp"
 #include "FDE/Core/Application.hpp"
 #include "FDE/Core/Event.hpp"
 #include "FDE/Core/Layer.hpp"

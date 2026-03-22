@@ -9,6 +9,8 @@
 #include "FDE/Renderer/VertexBuffer.hpp"
 #include "FDE/Scene/Components.hpp"
 #include "FDE/Scene/Object.hpp"
+#include "FDE/Asset/AssetDatabase.hpp"
+#include "FDE/Asset/AssetManager.hpp"
 #include "FDE/Core/FileSystem.hpp"
 #include "FDE/Core/Log.hpp"
 #include "FDE/Window/Window.hpp"
@@ -75,7 +77,7 @@ FDE::Scene2D* CreateDefaultScene(FDE::World* world)
     return scene;
 }
 
-void ResolvePendingMeshes(FDE::World* world)
+void ResolvePendingMeshes(FDE::World* world, FDE::AssetManager* assets)
 {
     if (!world)
         return;
@@ -88,7 +90,11 @@ void ResolvePendingMeshes(FDE::World* world)
         for (auto entity : view)
         {
             auto& mesh = view.get<FDE::Mesh2DComponent>(entity);
-            if (mesh.meshAsset == "builtin:triangle" && !mesh.vertexArray)
+            if (mesh.vertexArray && mesh.vertexArray->GetIndexCount() > 0)
+                continue;
+            if (assets)
+                assets->ResolveMesh2D(mesh);
+            if (!mesh.vertexArray && mesh.meshAsset == "builtin:triangle")
             {
                 std::shared_ptr<FDE::VertexArray> va;
                 CreateTriangleMesh(va);
@@ -133,6 +139,7 @@ EditorApplication::EditorApplication(const std::string& initialProjectPath)
                 m_preferences->SetLastProjectPath(projectRoot);
                 m_contentViewCurrentPath.clear();
                 m_scene2D = dynamic_cast<Scene2D*>(m_world->GetActiveScene());
+                RefreshAssetPipeline();
                 // Defer CreateDefaultScene to OnWindowCreated - OpenGL not ready in constructor
                 FDE_LOG_CLIENT_INFO("Opened project from file: {} ({})", desc.name, projectRoot);
             }
@@ -466,7 +473,7 @@ void EditorApplication::OnWindowCreated()
         m_scene2D = dynamic_cast<Scene2D*>(m_world->GetActiveScene());
         if (!m_scene2D && m_world->GetSceneNames().empty())
             m_scene2D = CreateDefaultScene(m_world.get());
-        ResolvePendingMeshes(m_world.get());
+        ResolvePendingMeshes(m_world.get(), m_assetManager.get());
     }
 
     if (m_preferences->GetMaximized() && GetWindow())
@@ -487,6 +494,8 @@ void EditorApplication::OnRunEnd()
 
 void EditorApplication::OnUpdate()
 {
+    if (m_assetManager)
+        m_assetManager->ProcessAsyncUploads();
     RenderMainUI();
     // Title bar drag: exclude right button area
     if (Window* w = GetWindow(); w)
@@ -560,6 +569,14 @@ void EditorApplication::RenderMainUI()
         {
             ImGui::Separator();
             if (ImGui::MenuItem("Preferences...")) { m_showPreferences = true; }
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("Assets"))
+        {
+            if (ImGui::MenuItem("Rescan Assets", nullptr, false, FileSystem::HasProject()))
+                OnRescanAssets();
+            if (ImGui::MenuItem("Build fdepack (Build/Game.fdepack)", nullptr, false, FileSystem::HasProject()))
+                OnBuildAssetPack();
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View"))
@@ -707,6 +724,8 @@ void EditorApplication::OnNewProject()
     m_preferences->SetLastProjectPath(projectRoot);
     m_contentViewCurrentPath.clear();
 
+    RefreshAssetPipeline();
+
     // Reset world to default for new project
     m_world = std::make_unique<World>();
     m_scene2D = CreateDefaultScene(m_world.get());
@@ -752,10 +771,11 @@ void EditorApplication::OnOpenProject()
     m_projectDescriptor = desc;
     m_preferences->SetLastProjectPath(selected);
     m_contentViewCurrentPath.clear();
+    RefreshAssetPipeline();
     m_scene2D = dynamic_cast<Scene2D*>(m_world->GetActiveScene());
     if (!m_scene2D && m_world->GetSceneNames().empty())
         m_scene2D = CreateDefaultScene(m_world.get());
-    ResolvePendingMeshes(m_world.get());
+    ResolvePendingMeshes(m_world.get(), m_assetManager.get());
     m_selectedObject = Object{};
     FDE_LOG_CLIENT_INFO("Opened project: {} ({})", desc.name, selected);
 }
@@ -1147,6 +1167,50 @@ void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
         }
     }
     ImGui::End();
+}
+
+void EditorApplication::RefreshAssetPipeline()
+{
+    if (!FileSystem::HasProject())
+    {
+        if (m_assetManager)
+            m_assetManager->Shutdown();
+        m_assetManager.reset();
+        return;
+    }
+    if (!m_assetManager)
+        m_assetManager = std::make_unique<AssetManager>();
+    std::string err;
+    if (!AssetDatabase::EnsureLibraryLayout(FileSystem::GetProjectRoot(), err))
+        FDE_LOG_CLIENT_WARN("Asset layout: {}", err);
+    err.clear();
+    if (!AssetDatabase::RescanAssets(FileSystem::GetProjectRoot(), err))
+        FDE_LOG_CLIENT_WARN("Asset rescan: {}", err);
+    m_assetManager->Initialize(FileSystem::GetProjectRoot());
+}
+
+void EditorApplication::OnRescanAssets()
+{
+    if (!FileSystem::HasProject())
+        return;
+    std::string err;
+    AssetDatabase::EnsureLibraryLayout(FileSystem::GetProjectRoot(), err);
+    AssetDatabase::RescanAssets(FileSystem::GetProjectRoot(), err);
+    if (m_assetManager)
+        m_assetManager->Initialize(FileSystem::GetProjectRoot());
+    ResolvePendingMeshes(m_world.get(), m_assetManager.get());
+    FDE_LOG_CLIENT_INFO("Asset rescan finished.");
+}
+
+void EditorApplication::OnBuildAssetPack()
+{
+    if (!FileSystem::HasProject())
+        return;
+    std::string err;
+    if (AssetDatabase::BuildFdepack(FileSystem::GetProjectRoot(), "Build/Game.fdepack", err))
+        FDE_LOG_CLIENT_INFO("Built Build/Game.fdepack");
+    else
+        FDE_LOG_CLIENT_ERROR("fdepack failed: {}", err);
 }
 
 bool EditorApplication::Initialize()

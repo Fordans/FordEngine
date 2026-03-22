@@ -2,6 +2,14 @@ add_library(FordEngine SHARED)
 target_compile_definitions(FordEngine PRIVATE FordEngine_EXPORTS)
 
 target_sources(FordEngine PRIVATE 
+    src/Asset/AssetId.cpp
+    src/Asset/AssetType.cpp
+    src/Asset/AssetRegistry.cpp
+    src/Asset/AssetDatabase.cpp
+    src/Asset/AssetManager.cpp
+    src/Asset/AssetPack.cpp
+    src/Asset/AssetLoadQueue.cpp
+    src/Asset/MeshImporter.cpp
     src/Core/Application.cpp
     src/Scene/Object.cpp
     src/Scene/Scene.cpp
@@ -54,6 +62,8 @@ target_link_libraries(FordEngine
         imgui
         glm
         json11
+    PRIVATE
+        assimp::assimp
 )
 
 if(WIN32)

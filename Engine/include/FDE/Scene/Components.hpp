@@ -26,11 +26,11 @@ struct FDE_API Transform2DComponent
 
 /// 2D mesh for rendering. Holds a VertexArray (position + color or other attributes).
 /// Entities with this component are rendered by the Scene2D renderer.
-/// meshAsset: serialization hint for project load, e.g. "builtin:triangle" for default triangle.
+/// meshAsset: persisted reference — "builtin:triangle", "guid:uuid", "fde://guid/uuid", or "Assets/.../file.fdemesh".
 struct FDE_API Mesh2DComponent
 {
     std::shared_ptr<VertexArray> vertexArray;
-    std::string meshAsset;  // "builtin:triangle" or asset path; used when vertexArray is null on load
+    std::string meshAsset;
 };
 
 } // namespace FDE

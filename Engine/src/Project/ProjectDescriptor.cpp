@@ -353,13 +353,10 @@ static bool DeserializeWorld(const json11::Json& json, World& world)
             if (itMesh != objData.end() && itMesh->second.is_string())
             {
                 std::string meshVal = itMesh->second.string_value();
-                if (meshVal == MESH_BUILTIN_TRIANGLE)
-                {
-                    Mesh2DComponent meshComp;
-                    meshComp.vertexArray = nullptr;
-                    meshComp.meshAsset = MESH_BUILTIN_TRIANGLE;
-                    scene->AddComponent<Mesh2DComponent>(entity, meshComp);
-                }
+                Mesh2DComponent meshComp;
+                meshComp.vertexArray = nullptr;
+                meshComp.meshAsset = meshVal;
+                scene->AddComponent<Mesh2DComponent>(entity, meshComp);
             }
         }
     }

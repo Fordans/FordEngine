@@ -100,6 +100,10 @@ class FDE_API BufferLayout
     {
         CalculateOffsetsAndStride();
     }
+    explicit BufferLayout(const std::vector<BufferElement>& elements) : m_elements(elements)
+    {
+        CalculateOffsetsAndStride();
+    }
 
     const std::vector<BufferElement>& GetElements() const { return m_elements; }
     uint32_t GetStride() const { return m_stride; }

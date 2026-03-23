@@ -46,6 +46,11 @@ constexpr const char* KEY_CAM_POS = "position";
 constexpr const char* KEY_CAM_YAW = "yaw";
 constexpr const char* KEY_CAM_PITCH = "pitch";
 constexpr const char* KEY_ALBEDO_TEXTURE = "albedoTexture";
+constexpr const char* KEY_DIRECTIONAL_LIGHT = "directionalLight";
+constexpr const char* KEY_DIR_LIGHT_DIRECTION = "direction";
+constexpr const char* KEY_DIR_LIGHT_COLOR = "color";
+constexpr const char* KEY_DIR_LIGHT_INTENSITY = "intensity";
+constexpr const char* KEY_SKYBOX_CROSS = "skyboxCrossTexture";
 
 bool MeshAssetImpliesScene3D(std::string_view mesh)
 {
@@ -324,6 +329,22 @@ static json11::Json SerializeWorld(const World& world)
                     objData[KEY_ALBEDO_TEXTURE] = mesh3->albedoTextureAsset;
             }
 
+            if (const DirectionalLightComponent* dl = reg.try_get<DirectionalLightComponent>(entity))
+            {
+                json11::Json::object dlobj;
+                dlobj[KEY_DIR_LIGHT_DIRECTION] =
+                    json11::Json::array{dl->direction.x, dl->direction.y, dl->direction.z};
+                dlobj[KEY_DIR_LIGHT_COLOR] = json11::Json::array{dl->color.x, dl->color.y, dl->color.z};
+                dlobj[KEY_DIR_LIGHT_INTENSITY] = dl->intensity;
+                objData[KEY_DIRECTIONAL_LIGHT] = std::move(dlobj);
+            }
+
+            if (const SkyboxComponent* sky = reg.try_get<SkyboxComponent>(entity))
+            {
+                if (!sky->crossTextureAsset.empty())
+                    objData[KEY_SKYBOX_CROSS] = sky->crossTextureAsset;
+            }
+
             objectsArr.push_back(std::move(objData));
         }
         sceneObj[KEY_OBJECTS] = std::move(objectsArr);
@@ -378,6 +399,10 @@ static bool DeserializeWorld(const json11::Json& json, World& world)
                 auto itPeekMesh = peekData.find(KEY_MESH);
                 if (itPeekMesh != peekData.end() && itPeekMesh->second.is_string()
                     && MeshAssetImpliesScene3D(itPeekMesh->second.string_value()))
+                    needScene3D = true;
+                if (peekData.find(KEY_DIRECTIONAL_LIGHT) != peekData.end())
+                    needScene3D = true;
+                if (peekData.find(KEY_SKYBOX_CROSS) != peekData.end())
                     needScene3D = true;
             }
         }
@@ -499,6 +524,47 @@ static bool DeserializeWorld(const json11::Json& json, World& world)
                 }
 
                 scene->AddComponent<Transform3DComponent>(entity, transform);
+            }
+
+            auto itDirLight = objData.find(KEY_DIRECTIONAL_LIGHT);
+            if (itDirLight != objData.end() && itDirLight->second.is_object())
+            {
+                DirectionalLightComponent dl;
+                const auto& d = itDirLight->second.object_items();
+                auto itD = d.find(KEY_DIR_LIGHT_DIRECTION);
+                if (itD != d.end() && itD->second.is_array())
+                {
+                    const auto& arr = itD->second.array_items();
+                    if (arr.size() >= 3)
+                    {
+                        dl.direction.x = static_cast<float>(arr[0].number_value());
+                        dl.direction.y = static_cast<float>(arr[1].number_value());
+                        dl.direction.z = static_cast<float>(arr[2].number_value());
+                    }
+                }
+                auto itC = d.find(KEY_DIR_LIGHT_COLOR);
+                if (itC != d.end() && itC->second.is_array())
+                {
+                    const auto& arr = itC->second.array_items();
+                    if (arr.size() >= 3)
+                    {
+                        dl.color.x = static_cast<float>(arr[0].number_value());
+                        dl.color.y = static_cast<float>(arr[1].number_value());
+                        dl.color.z = static_cast<float>(arr[2].number_value());
+                    }
+                }
+                auto itI = d.find(KEY_DIR_LIGHT_INTENSITY);
+                if (itI != d.end() && itI->second.is_number())
+                    dl.intensity = static_cast<float>(itI->second.number_value());
+                scene->AddComponent<DirectionalLightComponent>(entity, dl);
+            }
+
+            auto itSky = objData.find(KEY_SKYBOX_CROSS);
+            if (itSky != objData.end() && itSky->second.is_string())
+            {
+                SkyboxComponent sb;
+                sb.crossTextureAsset = itSky->second.string_value();
+                scene->AddComponent<SkyboxComponent>(entity, sb);
             }
 
             auto itMesh = objData.find(KEY_MESH);

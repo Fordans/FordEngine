@@ -86,6 +86,8 @@ void OpenGLShader::Unbind() const
 
 int OpenGLShader::GetUniformLocation(const std::string& name)
 {
+    if (!m_id)
+        return -1;
     if (m_uniformLocationCache.find(name) != m_uniformLocationCache.end())
         return m_uniformLocationCache[name];
 
@@ -96,6 +98,7 @@ int OpenGLShader::GetUniformLocation(const std::string& name)
 
 void OpenGLShader::SetMat4(const std::string& name, const glm::mat4& value)
 {
+    Bind();
     int location = GetUniformLocation(name);
     if (location >= 0)
         glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value));
@@ -103,6 +106,7 @@ void OpenGLShader::SetMat4(const std::string& name, const glm::mat4& value)
 
 void OpenGLShader::SetVec4(const std::string& name, const glm::vec4& value)
 {
+    Bind();
     int location = GetUniformLocation(name);
     if (location >= 0)
         glUniform4f(location, value.x, value.y, value.z, value.w);
@@ -110,6 +114,7 @@ void OpenGLShader::SetVec4(const std::string& name, const glm::vec4& value)
 
 void OpenGLShader::SetVec3(const std::string& name, const glm::vec3& value)
 {
+    Bind();
     int location = GetUniformLocation(name);
     if (location >= 0)
         glUniform3f(location, value.x, value.y, value.z);
@@ -117,6 +122,7 @@ void OpenGLShader::SetVec3(const std::string& name, const glm::vec3& value)
 
 void OpenGLShader::SetFloat(const std::string& name, float value)
 {
+    Bind();
     int location = GetUniformLocation(name);
     if (location >= 0)
         glUniform1f(location, value);
@@ -124,6 +130,7 @@ void OpenGLShader::SetFloat(const std::string& name, float value)
 
 void OpenGLShader::SetInt(const std::string& name, int value)
 {
+    Bind();
     int location = GetUniformLocation(name);
     if (location >= 0)
         glUniform1i(location, value);

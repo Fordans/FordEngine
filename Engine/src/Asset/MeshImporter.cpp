@@ -22,6 +22,7 @@ namespace
 struct Vertex
 {
     float px, py, pz;
+    float nx, ny, nz;
     float r, g, b;
     float u, v;
 };
@@ -74,8 +75,8 @@ bool MeshUsesVertexColors(const aiMesh* mesh)
     return spread > 0.08f;
 }
 
-void AppendMesh(const aiMesh* mesh, const glm::mat4& world, const glm::vec3& lightDir, const glm::vec3& baseColor,
-                std::vector<Vertex>& outVerts, std::vector<uint32_t>& outIndices, glm::vec3& bmin, glm::vec3& bmax)
+void AppendMesh(const aiMesh* mesh, const glm::mat4& world, const glm::vec3& baseColor, std::vector<Vertex>& outVerts,
+                std::vector<uint32_t>& outIndices, glm::vec3& bmin, glm::vec3& bmax)
 {
     const uint32_t base = static_cast<uint32_t>(outVerts.size());
     const bool useVertexColors = MeshUsesVertexColors(mesh);
@@ -85,6 +86,18 @@ void AppendMesh(const aiMesh* mesh, const glm::mat4& world, const glm::vec3& lig
     const float det = glm::determinant(world3);
     if (std::abs(det) > 1e-12f)
         normalMat = glm::transpose(glm::inverse(world3));
+
+    auto vertexNormal = [&](unsigned i) -> glm::vec3 {
+        if (mesh->HasNormals())
+        {
+            const aiVector3D& n = mesh->mNormals[i];
+            glm::vec3 N = normalMat * glm::vec3(n.x, n.y, n.z);
+            if (glm::dot(N, N) > 1e-10f)
+                return glm::normalize(N);
+        }
+        glm::vec3 up = normalMat * glm::vec3(0.f, 1.f, 0.f);
+        return glm::length(up) > 1e-10f ? glm::normalize(up) : glm::vec3(0.f, 1.f, 0.f);
+    };
 
     outVerts.resize(outVerts.size() + mesh->mNumVertices);
     for (unsigned i = 0; i < mesh->mNumVertices; ++i)
@@ -99,24 +112,17 @@ void AppendMesh(const aiMesh* mesh, const glm::mat4& world, const glm::vec3& lig
         bmin = glm::min(bmin, glm::vec3(v.px, v.py, v.pz));
         bmax = glm::max(bmax, glm::vec3(v.px, v.py, v.pz));
 
+        const glm::vec3 N = vertexNormal(i);
+        v.nx = N.x;
+        v.ny = N.y;
+        v.nz = N.z;
+
         if (useVertexColors)
         {
             const aiColor4D& c = mesh->mColors[0][i];
             v.r = c.r;
             v.g = c.g;
             v.b = c.b;
-        }
-        else if (mesh->HasNormals())
-        {
-            const aiVector3D& n = mesh->mNormals[i];
-            glm::vec3 N = normalMat * glm::vec3(n.x, n.y, n.z);
-            if (glm::dot(N, N) > 1e-10f)
-                N = glm::normalize(N);
-            const float ndl = glm::max(0.f, glm::dot(N, lightDir));
-            const float shade = 0.22f + 0.78f * ndl;
-            v.r = baseColor.r * shade;
-            v.g = baseColor.g * shade;
-            v.b = baseColor.b * shade;
         }
         else
         {
@@ -149,19 +155,18 @@ void AppendMesh(const aiMesh* mesh, const glm::mat4& world, const glm::vec3& lig
     }
 }
 
-void ProcessNode(const aiScene* scene, const aiNode* node, const glm::mat4& parentWorld, const glm::vec3& lightDir,
-                 const glm::vec3& baseColor, std::vector<Vertex>& outVerts, std::vector<uint32_t>& outIndices,
-                 glm::vec3& bmin, glm::vec3& bmax)
+void ProcessNode(const aiScene* scene, const aiNode* node, const glm::mat4& parentWorld, const glm::vec3& baseColor,
+                 std::vector<Vertex>& outVerts, std::vector<uint32_t>& outIndices, glm::vec3& bmin, glm::vec3& bmax)
 {
     const glm::mat4 world = parentWorld * AiMatrix4x4ToGlm(node->mTransformation);
     for (unsigned i = 0; i < node->mNumMeshes; ++i)
     {
         const aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
         if (mesh && mesh->mNumVertices > 0)
-            AppendMesh(mesh, world, lightDir, baseColor, outVerts, outIndices, bmin, bmax);
+            AppendMesh(mesh, world, baseColor, outVerts, outIndices, bmin, bmax);
     }
     for (unsigned c = 0; c < node->mNumChildren; ++c)
-        ProcessNode(scene, node->mChildren[c], world, lightDir, baseColor, outVerts, outIndices, bmin, bmax);
+        ProcessNode(scene, node->mChildren[c], world, baseColor, outVerts, outIndices, bmin, bmax);
 }
 
 } // namespace
@@ -187,7 +192,6 @@ bool MeshImporter::LoadSceneMeshesMerged(const std::filesystem::path& path, std:
         return false;
     }
 
-    const glm::vec3 lightDir = glm::normalize(glm::vec3(0.45f, 0.85f, 0.35f));
     const glm::vec3 baseColor(0.72f, 0.70f, 0.68f);
 
     std::vector<Vertex> vertices;
@@ -195,7 +199,7 @@ bool MeshImporter::LoadSceneMeshesMerged(const std::filesystem::path& path, std:
     glm::vec3 bmin(FLT_MAX);
     glm::vec3 bmax(-FLT_MAX);
 
-    ProcessNode(scene, scene->mRootNode, glm::mat4(1.f), lightDir, baseColor, vertices, indices, bmin, bmax);
+    ProcessNode(scene, scene->mRootNode, glm::mat4(1.f), baseColor, vertices, indices, bmin, bmax);
 
     if (vertices.empty() || indices.empty())
     {
@@ -209,8 +213,8 @@ bool MeshImporter::LoadSceneMeshesMerged(const std::filesystem::path& path, std:
         *outLocalMax = bmax;
 
     auto vbo = VertexBuffer::Create(vertices.data(), vertices.size() * sizeof(Vertex));
-    BufferLayout layout = {{ShaderDataType::Float3, "a_Position"}, {ShaderDataType::Float3, "a_Color"},
-                           {ShaderDataType::Float2, "a_TexCoord"}};
+    BufferLayout layout = {{ShaderDataType::Float3, "a_Position"}, {ShaderDataType::Float3, "a_Normal"},
+                           {ShaderDataType::Float3, "a_Color"}, {ShaderDataType::Float2, "a_TexCoord"}};
     outVertexArray = VertexArray::Create();
     if (!vbo || !outVertexArray)
         return false;

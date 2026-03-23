@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FDE/Export.hpp"
+#include "FDE/Asset/CubemapResource.hpp"
 #include "FDE/Asset/Texture2DResource.hpp"
 #include "FDE/Renderer/VertexArray.hpp"
 #include <glm/glm.hpp>
@@ -42,7 +43,24 @@ struct FDE_API Transform3DComponent
     glm::vec3 scale{1.0f, 1.0f, 1.0f};
 };
 
-/// 3D mesh (same vertex layout as 2D colored mesh: position + RGB).
+/// Skybox from a horizontal-cross cubemap PNG under `Resources/` (see `FileSystem::ResolveEngineResource`).
+/// Use `engine:<file>` e.g. `engine:3d-space-skybox.png`. Empty `crossTextureAsset` disables the skybox.
+struct FDE_API SkyboxComponent
+{
+    std::string crossTextureAsset = "engine:3d-space-skybox.png";
+    std::shared_ptr<CubemapResource> cubemap;
+};
+
+/// Directional light: `direction` is world-space direction **light rays travel** (e.g. (0,-1,0) = downward).
+/// Shading uses the opposite vector (toward the light source). No transform component required.
+struct FDE_API DirectionalLightComponent
+{
+    glm::vec3 direction{0.35f, -0.85f, 0.25f};
+    glm::vec3 color{1.0f, 1.0f, 1.0f};
+    float intensity = 1.0f;
+};
+
+/// 3D mesh: position + normal + RGB albedo + UV (see MeshImporter / builtin cube).
 /// meshAsset: "builtin:cube" or "engine:<path>" (Resources/ plus path via FileSystem).
 /// \p localBounds* are model-space AABB used for picking (defaults match unit cube).
 struct FDE_API Mesh3DComponent

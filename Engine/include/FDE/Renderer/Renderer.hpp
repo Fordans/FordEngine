@@ -35,6 +35,9 @@ class FDE_API Renderer
     static Shader* GetMesh3DShader();
     /// Restores the default shader (for colored meshes). Call after using GetSimpleShader().
     static void UseDefaultShader();
+
+    /// Fullscreen-depth cubemap background. \p cubemapGlId is `GL_TEXTURE_CUBE_MAP`. Saves/restores depth state.
+    static void DrawSkybox(unsigned int cubemapGlId, const glm::mat4& view, const glm::mat4& projection);
 };
 
 } // namespace FDE

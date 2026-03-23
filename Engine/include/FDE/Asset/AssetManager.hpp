@@ -3,6 +3,7 @@
 #include "FDE/Asset/AssetLoadQueue.hpp"
 #include "FDE/Asset/AssetPack.hpp"
 #include "FDE/Asset/AssetRegistry.hpp"
+#include "FDE/Asset/CubemapResource.hpp"
 #include "FDE/Asset/Texture2DResource.hpp"
 #include "FDE/Export.hpp"
 #include "FDE/Renderer/Shader.hpp"
@@ -36,6 +37,8 @@ class FDE_API AssetManager
     bool ResolveMesh3D(Mesh3DComponent& mesh);
     /// Loads \p mesh.albedoTexture from \p albedoTextureAsset when set.
     bool ResolveMesh3DAlbedo(Mesh3DComponent& mesh);
+    /// Horizontal-cross cubemap PNG (`engine:<path>` under Resources/). Clears GPU cubemap if asset empty.
+    bool ResolveSkybox(SkyboxComponent& skybox);
 
     std::shared_ptr<Shader> LoadShader(const AssetId& id);
     std::shared_ptr<Texture2DResource> LoadTexture2D(const AssetId& id);
@@ -58,6 +61,7 @@ class FDE_API AssetManager
     std::unordered_map<std::string, std::pair<glm::vec3, glm::vec3>> m_mesh3DLocalBoundsCache;
     std::unordered_map<std::string, std::shared_ptr<Shader>> m_shaderCache;
     std::unordered_map<std::string, std::shared_ptr<Texture2DResource>> m_textureCache;
+    std::unordered_map<std::string, std::shared_ptr<CubemapResource>> m_cubemapCache;
 
     std::unique_ptr<AssetLoadQueue> m_loadQueue;
 };

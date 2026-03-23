@@ -73,6 +73,8 @@ void ResolvePendingMeshes(World* world, AssetManager* assets)
                 resolve3d->ResolveMesh3D(mesh);
             resolve3d->ResolveMesh3DAlbedo(mesh);
         }
+        for (auto entity : scene3d->GetRegistry().view<SkyboxComponent>())
+            resolve3d->ResolveSkybox(scene3d->GetRegistry().get<SkyboxComponent>(entity));
     }
 }
 

@@ -3,6 +3,7 @@
 #include "FDE/Asset/AssetId.hpp"
 #include "FDE/Asset/AssetType.hpp"
 #include "FDE/Asset/MeshImporter.hpp"
+#include "FDE/Asset/SkyboxCubemap.hpp"
 #include "FDE/Core/FileSystem.hpp"
 #include "FDE/Core/Log.hpp"
 #include "FDE/Renderer/BufferLayout.hpp"
@@ -52,37 +53,37 @@ void CreateBuiltinTriangle(std::shared_ptr<VertexArray>& outVAO)
 void CreateBuiltinCube(std::shared_ptr<VertexArray>& outVAO)
 {
     const float s = 0.5f;
-    auto pushV = [](std::vector<float>& v, float x, float y, float z, float r, float g, float b, float u,
-                    float tv) {
-        v.insert(v.end(), {x, y, z, r, g, b, u, tv});
+    auto pushV = [](std::vector<float>& v, float x, float y, float z, float nx, float ny, float nz, float r,
+                    float g, float b, float u, float tv) {
+        v.insert(v.end(), {x, y, z, nx, ny, nz, r, g, b, u, tv});
     };
     auto quad = [&](std::vector<float>& v, float ax, float ay, float az, float bx, float by, float bz, float cx,
-                    float cy, float cz, float dx, float dy, float dz, float r, float g, float b, float u0, float v0,
-                    float u1, float v1) {
-        pushV(v, ax, ay, az, r, g, b, u0, v0);
-        pushV(v, bx, by, bz, r, g, b, u1, v0);
-        pushV(v, cx, cy, cz, r, g, b, u1, v1);
-        pushV(v, ax, ay, az, r, g, b, u0, v0);
-        pushV(v, cx, cy, cz, r, g, b, u1, v1);
-        pushV(v, dx, dy, dz, r, g, b, u0, v1);
+                    float cy, float cz, float dx, float dy, float dz, float nx, float ny, float nz, float r, float g,
+                    float b, float u0, float v0, float u1, float v1) {
+        pushV(v, ax, ay, az, nx, ny, nz, r, g, b, u0, v0);
+        pushV(v, bx, by, bz, nx, ny, nz, r, g, b, u1, v0);
+        pushV(v, cx, cy, cz, nx, ny, nz, r, g, b, u1, v1);
+        pushV(v, ax, ay, az, nx, ny, nz, r, g, b, u0, v0);
+        pushV(v, cx, cy, cz, nx, ny, nz, r, g, b, u1, v1);
+        pushV(v, dx, dy, dz, nx, ny, nz, r, g, b, u0, v1);
     };
 
     std::vector<float> verts;
-    verts.reserve(36u * 8u);
-    quad(verts, -s, -s, s, s, -s, s, s, s, s, -s, s, s, 0.25f, 0.45f, 1.0f, 0.f, 0.f, 1.f, 1.f);
-    quad(verts, s, -s, -s, -s, -s, -s, -s, s, -s, s, s, -s, 0.25f, 0.85f, 0.35f, 0.f, 0.f, 1.f, 1.f);
-    quad(verts, s, -s, s, s, -s, -s, s, s, -s, s, s, s, 1.0f, 0.35f, 0.25f, 0.f, 0.f, 1.f, 1.f);
-    quad(verts, -s, -s, -s, -s, -s, s, -s, s, s, -s, s, -s, 1.0f, 0.85f, 0.25f, 0.f, 0.f, 1.f, 1.f);
-    quad(verts, -s, s, s, s, s, s, s, s, -s, -s, s, -s, 0.9f, 0.9f, 0.95f, 0.f, 0.f, 1.f, 1.f);
-    quad(verts, -s, -s, -s, s, -s, -s, s, -s, s, -s, -s, s, 0.45f, 0.3f, 0.65f, 0.f, 0.f, 1.f, 1.f);
+    verts.reserve(36u * 11u);
+    quad(verts, -s, -s, s, s, -s, s, s, s, s, -s, s, s, 0.f, 0.f, 1.f, 0.25f, 0.45f, 1.0f, 0.f, 0.f, 1.f, 1.f);
+    quad(verts, s, -s, -s, -s, -s, -s, -s, s, -s, s, s, -s, 0.f, 0.f, -1.f, 0.25f, 0.85f, 0.35f, 0.f, 0.f, 1.f, 1.f);
+    quad(verts, s, -s, s, s, -s, -s, s, s, -s, s, s, s, 1.f, 0.f, 0.f, 1.0f, 0.35f, 0.25f, 0.f, 0.f, 1.f, 1.f);
+    quad(verts, -s, -s, -s, -s, -s, s, -s, s, s, -s, s, -s, -1.f, 0.f, 0.f, 1.0f, 0.85f, 0.25f, 0.f, 0.f, 1.f, 1.f);
+    quad(verts, -s, s, s, s, s, s, s, s, -s, -s, s, -s, 0.f, 1.f, 0.f, 0.9f, 0.9f, 0.95f, 0.f, 0.f, 1.f, 1.f);
+    quad(verts, -s, -s, -s, s, -s, -s, s, -s, s, -s, -s, s, 0.f, -1.f, 0.f, 0.45f, 0.3f, 0.65f, 0.f, 0.f, 1.f, 1.f);
 
     std::vector<uint32_t> indices(36u);
     for (uint32_t i = 0; i < 36u; ++i)
         indices[i] = i;
 
     auto vbo = VertexBuffer::Create(verts.data(), verts.size() * sizeof(float));
-    BufferLayout layout = {{ShaderDataType::Float3, "a_Position"}, {ShaderDataType::Float3, "a_Color"},
-                           {ShaderDataType::Float2, "a_TexCoord"}};
+    BufferLayout layout = {{ShaderDataType::Float3, "a_Position"}, {ShaderDataType::Float3, "a_Normal"},
+                           {ShaderDataType::Float3, "a_Color"}, {ShaderDataType::Float2, "a_TexCoord"}};
     outVAO = VertexArray::Create();
     if (outVAO && vbo)
     {
@@ -140,6 +141,7 @@ void AssetManager::Shutdown()
     m_mesh3DLocalBoundsCache.clear();
     m_shaderCache.clear();
     m_textureCache.clear();
+    m_cubemapCache.clear();
     m_pack.reset();
     m_registry = AssetRegistry{};
     m_projectRoot.clear();
@@ -448,6 +450,52 @@ std::shared_ptr<Shader> AssetManager::LoadShader(const AssetId& id)
     auto shared = std::shared_ptr<Shader>(shader.release());
     m_shaderCache[key] = shared;
     return shared;
+}
+
+bool AssetManager::ResolveSkybox(SkyboxComponent& skybox)
+{
+    if (skybox.crossTextureAsset.empty())
+    {
+        skybox.cubemap.reset();
+        return true;
+    }
+
+    static constexpr const char kEnginePrefix[] = "engine:";
+    static constexpr size_t kEnginePrefixLen = sizeof(kEnginePrefix) - 1u;
+    std::string absPath;
+    if (skybox.crossTextureAsset.size() > kEnginePrefixLen
+        && skybox.crossTextureAsset.compare(0, kEnginePrefixLen, kEnginePrefix) == 0)
+        absPath = FileSystem::ResolveEngineResource(skybox.crossTextureAsset.substr(kEnginePrefixLen));
+    else
+        absPath = FileSystem::ResolveEngineResource(skybox.crossTextureAsset);
+
+    if (absPath.empty())
+    {
+        FDE_LOG_CLIENT_WARN("Skybox image not found (Resources/): {}", skybox.crossTextureAsset);
+        skybox.cubemap.reset();
+        return false;
+    }
+
+    // Bust GPU cache when horizontal-cross → cubemap layout rules change.
+    static constexpr const char kSkyboxLayoutRevision[] = "@sb5";
+    const std::string cacheKey = absPath + kSkyboxLayoutRevision;
+
+    const auto it = m_cubemapCache.find(cacheKey);
+    if (it != m_cubemapCache.end())
+    {
+        skybox.cubemap = it->second;
+        return true;
+    }
+
+    std::shared_ptr<CubemapResource> cube;
+    if (!LoadCubemapFromHorizontalCrossPng(absPath.c_str(), cube) || !cube)
+    {
+        skybox.cubemap.reset();
+        return false;
+    }
+    m_cubemapCache[cacheKey] = cube;
+    skybox.cubemap = cube;
+    return true;
 }
 
 bool AssetManager::ResolveMesh3DAlbedo(Mesh3DComponent& mesh)

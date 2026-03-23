@@ -198,6 +198,11 @@ FDE::Scene3D* CreateDefaultScene3D(FDE::World* world)
     if (!scene)
         return nullptr;
     world->SetActiveScene(scene);
+    FDE::Object sunObj = scene->CreateObject();
+    scene->AddComponent<FDE::TagComponent>(sunObj, "Directional Light");
+    scene->AddComponent<FDE::DirectionalLightComponent>(sunObj, FDE::DirectionalLightComponent{});
+    scene->AddComponent<FDE::SkyboxComponent>(sunObj, FDE::SkyboxComponent{});
+
     FDE::Object cubeObj = scene->CreateObject();
     scene->AddComponent<FDE::TagComponent>(cubeObj, "Cube");
     scene->AddComponent<FDE::Transform3DComponent>(cubeObj);
@@ -263,6 +268,8 @@ void ResolveMesh3DInScene(FDE::Scene* scene, FDE::AssetManager* assets)
             use->ResolveMesh3D(mesh);
         use->ResolveMesh3DAlbedo(mesh);
     }
+    for (auto entity : reg.view<FDE::SkyboxComponent>())
+        use->ResolveSkybox(reg.get<FDE::SkyboxComponent>(entity));
 }
 
 } // namespace
@@ -1575,6 +1582,34 @@ void EditorApplication::RenderDetailView(ImGuiID dockspace_id)
                     m_assetManager->ResolveMesh3DAlbedo(*mesh3);
             }
         }
+
+        if (auto* dirLight = scene->GetComponent<DirectionalLightComponent>(m_selectedObject))
+        {
+            if (ImGui::CollapsingHeader("Directional light"))
+            {
+                ImGui::TextDisabled("Direction: world-space travel of light rays (e.g. 0,-1,0 = downward).");
+                ImGui::DragFloat3("Direction", &dirLight->direction.x, 0.02f);
+                ImGui::DragFloat3("Color", &dirLight->color.x, 0.01f, 0.f, 4.f);
+                ImGui::DragFloat("Intensity", &dirLight->intensity, 0.02f, 0.f, 16.f);
+            }
+        }
+
+        if (auto* sky = scene->GetComponent<SkyboxComponent>(m_selectedObject))
+        {
+            if (ImGui::CollapsingHeader("Skybox"))
+            {
+                ImGui::TextDisabled("Horizontal cross cubemap PNG (Resources/). Example: engine:3d-space-skybox.png");
+                char buf[512]{};
+                std::strncpy(buf, sky->crossTextureAsset.c_str(), sizeof(buf) - 1);
+                if (ImGui::InputText("Cross texture", buf, sizeof(buf)))
+                {
+                    sky->crossTextureAsset = buf;
+                    sky->cubemap.reset();
+                }
+                if (m_assetManager)
+                    m_assetManager->ResolveSkybox(*sky);
+            }
+        }
     }
     ImGui::End();
 }
@@ -1627,7 +1662,9 @@ void EditorApplication::ProcessSceneViewportCameraInput(bool allowSceneCameraInp
 
     ImGuiIO& io = ImGui::GetIO();
     Scene* activeNav = m_world ? m_world->GetActiveScene() : nullptr;
-    const bool scene3DNav = activeNav && Scene3D::HasMesh3DDrawables(*activeNav);
+    const bool scene3DNav = activeNav
+                            && (Scene3D::HasMesh3DDrawables(*activeNav)
+                                || Scene3D::HasSkyboxConfigured(*activeNav));
     if (!scene3DNav)
         m_sceneCamera3D.ClearMouseLookSmoothing();
 
@@ -1869,11 +1906,18 @@ void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
 
                 Renderer::UseDefaultShader();
                 glEnable(GL_DEPTH_TEST);
+
+                Scene3D* scene3D = activeForDraw ? dynamic_cast<Scene3D*>(activeForDraw) : nullptr;
+                if (scene3D)
+                {
+                    ResolveMesh3DInScene(activeForDraw, m_assetManager.get());
+                    Scene3D::RenderSkyboxIfAny(*scene3D, m_sceneCamera3D, width, height, m_assetManager.get());
+                }
+
                 if (activeForDraw && Scene3D::HasMesh3DDrawables(*activeForDraw))
                 {
                     if (showGrid)
                         DrawEditorSceneGrid3D(m_sceneCamera3D, width, height, gridSize);
-                    ResolveMesh3DInScene(activeForDraw, m_assetManager.get());
                     Scene3D::RenderMesh3DEntities(*activeForDraw, m_sceneCamera3D, width, height,
                                                   m_assetManager.get());
 
@@ -1902,7 +1946,7 @@ void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
                                          viewMat, projMat, m_scene3DGizmoState);
                     }
                 }
-                else if (m_scene2D)
+                else if (!scene3D && m_scene2D)
                 {
                     m_scene2D->Render(m_sceneCamera, width, height);
                 }

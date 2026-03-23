@@ -14,6 +14,8 @@ target_sources(FordEngine PRIVATE
     src/Asset/AssetRegistry.cpp
     src/Asset/AssetDatabase.cpp
     src/Asset/AssetManager.cpp
+    src/Asset/CubemapResource.cpp
+    src/Asset/SkyboxCubemap.cpp
     src/Asset/AssetPack.cpp
     src/Asset/AssetLoadQueue.cpp
     src/Asset/MeshImporter.cpp

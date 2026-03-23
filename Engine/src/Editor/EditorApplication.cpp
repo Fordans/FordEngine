@@ -3,10 +3,9 @@
 #include "FDE/Editor/EditorConsole.hpp"
 #include "FDE/Editor/EditorPreferences.hpp"
 #include "FDE/ImGui/ImGuiLayer.hpp"
-#include "FDE/Renderer/BufferLayout.hpp"
 #include "FDE/Renderer/Renderer.hpp"
 #include "FDE/Renderer/VertexArray.hpp"
-#include "FDE/Renderer/VertexBuffer.hpp"
+#include "FDE/Runtime/RuntimeMeshResolve.hpp"
 #include "FDE/Scene/Components.hpp"
 #include "FDE/Scene/Object.hpp"
 #include "FDE/Scene/Scene3D.hpp"
@@ -30,6 +29,11 @@
 #include <cstring>
 #include <filesystem>
 #include <vector>
+
+#if !defined(_WIN32)
+#include <sys/types.h>
+#include <unistd.h>
+#endif
 
 #if defined(_WIN32)
 #define GLFW_EXPOSE_NATIVE_WIN32
@@ -184,25 +188,6 @@ void DrawEditorSceneGrid3D(const FDE::Camera3D& camera, uint32_t viewportWidth, 
     FDE::Renderer::UseDefaultShader();
 }
 
-void CreateTriangleMesh(std::shared_ptr<FDE::VertexArray>& outVAO)
-{
-    float vertices[] = {
-        -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f,
-        0.5f,  -0.5f, 0.0f, 0.0f, 1.0f, 0.0f,
-        0.0f,  0.5f,  0.0f, 0.0f, 0.0f, 1.0f,
-    };
-    uint32_t indices[] = {0, 1, 2};
-    auto vbo = FDE::VertexBuffer::Create(vertices, sizeof(vertices));
-    FDE::BufferLayout layout = {{FDE::ShaderDataType::Float3, "a_Position"},
-                                {FDE::ShaderDataType::Float3, "a_Color"}};
-    outVAO = FDE::VertexArray::Create();
-    if (outVAO && vbo)
-    {
-        outVAO->AddVertexBuffer(vbo, layout);
-        outVAO->SetIndexBuffer(indices, 3);
-    }
-}
-
 FDE::Scene3D* CreateDefaultScene3D(FDE::World* world)
 {
     if (!world)
@@ -256,48 +241,6 @@ void ResolveMesh3DInScene(FDE::Scene* scene, FDE::AssetManager* assets)
         if (mesh.vertexArray && mesh.vertexArray->GetIndexCount() > 0)
             continue;
         use->ResolveMesh3D(mesh);
-    }
-}
-
-void ResolvePendingMeshes(FDE::World* world, FDE::AssetManager* assets)
-{
-    if (!world)
-        return;
-    FDE::AssetManager fallback;
-    FDE::AssetManager* resolve3d = assets ? assets : &fallback;
-
-    for (const std::string& name : world->GetSceneNames())
-    {
-        FDE::Scene* scene = world->GetScene(name);
-        if (!scene)
-            continue;
-        auto view = scene->GetRegistry().view<FDE::Mesh2DComponent>();
-        for (auto entity : view)
-        {
-            auto& mesh = view.get<FDE::Mesh2DComponent>(entity);
-            if (mesh.vertexArray && mesh.vertexArray->GetIndexCount() > 0)
-                continue;
-            if (assets)
-                assets->ResolveMesh2D(mesh);
-            if (!mesh.vertexArray && mesh.meshAsset == "builtin:triangle")
-            {
-                std::shared_ptr<FDE::VertexArray> va;
-                CreateTriangleMesh(va);
-                mesh.vertexArray = va;
-            }
-        }
-
-        FDE::Scene3D* scene3d = world->GetScene3D(name);
-        if (!scene3d)
-            continue;
-        auto view3d = scene3d->GetRegistry().view<FDE::Mesh3DComponent>();
-        for (auto entity : view3d)
-        {
-            auto& mesh = view3d.get<FDE::Mesh3DComponent>(entity);
-            if (mesh.vertexArray && mesh.vertexArray->GetIndexCount() > 0)
-                continue;
-            resolve3d->ResolveMesh3D(mesh);
-        }
     }
 }
 
@@ -535,7 +478,8 @@ void EditorApplication::RenderContentView(ImGuiID dockspace_id)
         ImVec2 iconSizeVec(iconSize, iconSize);
 
         auto isHiddenFile = [](const std::string& name) -> bool {
-            return name == ".fproject" || name == "FordEditor.cfg" || name == "imgui.ini";
+            return name == ".fproject" || name == "FordEditor.cfg" || name == "imgui.ini"
+                || name == "imgui_runtime.ini";
         };
 
         std::vector<std::string> folders;
@@ -795,6 +739,8 @@ void EditorApplication::RenderMainUI()
                 OnOpenProject();
             if (ImGui::MenuItem("Save Project", nullptr, false, FileSystem::HasProject()))
                 OnSaveProject();
+            if (ImGui::MenuItem("Play in Runtime", nullptr, false, FileSystem::HasProject()))
+                OnPlayInRuntime();
 #if defined(_WIN32)
             ImGui::Separator();
             if (ImGui::MenuItem("Register .fproject association"))
@@ -1042,6 +988,105 @@ void EditorApplication::OnSaveProject()
         return;
     }
     FDE_LOG_CLIENT_INFO("Saved project: {}", root);
+}
+
+namespace
+{
+
+std::string ResolveFordRuntimeExecutablePath()
+{
+    namespace fs = std::filesystem;
+    fs::path editorDir = FileSystem::GetExecutableDirectory();
+#if defined(_WIN32)
+    const char* runtimeName = "FordRuntime.exe";
+#else
+    const char* runtimeName = "FordRuntime";
+#endif
+    if (editorDir.empty())
+        return {};
+    fs::path sameDir = editorDir / runtimeName;
+    if (fs::exists(sameDir))
+        return sameDir.string();
+    // Typical CMake/VS layout: Engine/Editor/<Config>/ next to Engine/RuntimeApp/<Config>/
+    if (editorDir.has_filename())
+    {
+        fs::path engineDir = editorDir.parent_path().parent_path();
+        fs::path sibling = engineDir / "RuntimeApp" / editorDir.filename() / runtimeName;
+        if (fs::exists(sibling))
+            return sibling.string();
+    }
+    return {};
+}
+
+#if defined(_WIN32)
+std::wstring Utf8ToWide(const std::string& u8)
+{
+    if (u8.empty())
+        return {};
+    int n = MultiByteToWideChar(CP_UTF8, 0, u8.c_str(), -1, nullptr, 0);
+    if (n <= 0)
+        return {};
+    std::wstring out(static_cast<size_t>(n - 1), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, u8.c_str(), -1, out.data(), n);
+    return out;
+}
+#endif
+
+} // namespace
+
+void EditorApplication::OnPlayInRuntime()
+{
+    if (!FileSystem::HasProject() || !m_projectDescriptor)
+    {
+        FDE_LOG_CLIENT_WARN("Play in Runtime: no project open.");
+        return;
+    }
+
+    OnSaveProject();
+
+    namespace fs = std::filesystem;
+    fs::path fproj = fs::path(FileSystem::GetProjectRoot()) / ProjectDescriptor::GetFileName();
+    if (!fs::is_regular_file(fproj))
+    {
+        FDE_LOG_CLIENT_ERROR("Play in Runtime: missing project file {}", fproj.string());
+        return;
+    }
+
+    std::string runtimeExe = ResolveFordRuntimeExecutablePath();
+    if (runtimeExe.empty())
+    {
+        FDE_LOG_CLIENT_ERROR(
+            "Play in Runtime: could not find FordRuntime next to the editor or under RuntimeApp/<Config>.");
+        return;
+    }
+
+    const std::string fprojArg = fproj.string();
+
+#if defined(_WIN32)
+    std::wstring wExe = Utf8ToWide(runtimeExe);
+    std::wstring wParams = L"\"" + Utf8ToWide(fprojArg) + L"\"";
+    std::wstring wCwd = Utf8ToWide(FileSystem::GetProjectRoot());
+    HINSTANCE shellResult =
+        ShellExecuteW(nullptr, L"open", wExe.c_str(), wParams.c_str(), wCwd.c_str(), SW_SHOWNORMAL);
+    if (reinterpret_cast<intptr_t>(shellResult) <= 32)
+        FDE_LOG_CLIENT_ERROR("Play in Runtime: ShellExecute failed (code {})",
+                             static_cast<int>(reinterpret_cast<intptr_t>(shellResult)));
+#else
+    pid_t pid = fork();
+    if (pid < 0)
+    {
+        FDE_LOG_CLIENT_ERROR("Play in Runtime: fork failed.");
+        return;
+    }
+    if (pid == 0)
+    {
+        std::string root = FileSystem::GetProjectRoot();
+        if (chdir(root.c_str()) != 0)
+            _exit(127);
+        execl(runtimeExe.c_str(), "FordRuntime", fprojArg.c_str(), nullptr);
+        _exit(127);
+    }
+#endif
 }
 
 #if defined(_WIN32)
@@ -1427,6 +1472,50 @@ void EditorApplication::RenderSceneGridOverlay(ImVec2 itemMin, ImVec2 itemMax, u
     }
 }
 
+namespace
+{
+
+/// Right-pointing play triangle; returns true if clicked while \p enabled.
+bool SceneViewToolbarPlayButton(bool enabled)
+{
+    const float side = ImGui::GetFrameHeight();
+    if (!enabled)
+        ImGui::BeginDisabled();
+    ImGui::InvisibleButton("##ScenePlayRuntime", ImVec2(side, side));
+    if (!enabled)
+        ImGui::EndDisabled();
+
+    const bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 min = ImGui::GetItemRectMin();
+    const ImVec2 max = ImGui::GetItemRectMax();
+
+    if (hovered && enabled)
+        dl->AddRectFilled(min, max, ImGui::GetColorU32(ImGuiCol_ButtonHovered), 3.0f);
+    else if (hovered)
+        dl->AddRectFilled(min, max, ImGui::GetColorU32(ImGuiCol_FrameBg), 2.0f);
+
+    const ImVec2 c(0.5f * (min.x + max.x), 0.5f * (min.y + max.y));
+    const float r = side * 0.32f;
+    const ImU32 triCol = enabled ? IM_COL32(236, 236, 244, 255) : IM_COL32(110, 110, 120, 255);
+    const ImVec2 v0(c.x - r * 0.5f, c.y - r);
+    const ImVec2 v1(c.x - r * 0.5f, c.y + r);
+    const ImVec2 v2(c.x + r * 0.85f, c.y);
+    dl->AddTriangleFilled(v0, v1, v2, triCol);
+
+    if (hovered)
+    {
+        if (enabled)
+            ImGui::SetTooltip("Play in Runtime");
+        else
+            ImGui::SetTooltip("Open a project to play");
+    }
+
+    return enabled && ImGui::IsItemClicked(ImGuiMouseButton_Left);
+}
+
+} // namespace
+
 void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
 {
     ImGui::SetNextWindowDockID(dockspace_id, ImGuiCond_FirstUseEver);
@@ -1460,6 +1549,10 @@ void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
             if (tfm != m_preferences->GetScene3DTransformMode())
                 m_preferences->SetScene3DTransformMode(tfm);
         }
+
+        ImGui::Spacing();
+        if (SceneViewToolbarPlayButton(FileSystem::HasProject()))
+            OnPlayInRuntime();
 
         ImVec2 viewportSize = ImGui::GetContentRegionAvail();
         if (viewportSize.x > 0 && viewportSize.y > 0)

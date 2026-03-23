@@ -13,6 +13,7 @@ FordEngine/
     ├── include/FDE/            # 公共头文件
     │   ├── Core/               # Application, Log
     │   ├── Editor/             # EditorApplication
+    │   ├── Runtime/            # RuntimeApplication, RuntimeSession, debug ImGui layer
     │   ├── ImGui/              # ImGuiContext
     │   ├── Window/             # Window
     │   ├── Export.hpp
@@ -20,6 +21,8 @@ FordEngine/
     └── src/
         ├── Core/
         ├── Editor/             # EditorApplication + main
+        ├── Runtime/            # runtime module sources
+        ├── RuntimeApp/         # FordRuntime main.cpp (FordRuntime target in Engine/RuntimeApp/)
         ├── ImGui/
         └── Window/
 ```

@@ -59,6 +59,7 @@ class FDE_API EditorApplication : public Application
     void OnNewProject();
     void OnOpenProject();
     void OnSaveProject();
+    void OnPlayInRuntime();
     void OnRegisterFileAssociation();
     void RefreshAssetPipeline();
     void OnRescanAssets();

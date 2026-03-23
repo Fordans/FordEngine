@@ -1,5 +1,12 @@
+option(FDE_RUNTIME_DEBUG "Enable runtime ImGui debug overlay by default" ON)
+
 add_library(FordEngine SHARED)
 target_compile_definitions(FordEngine PRIVATE FordEngine_EXPORTS)
+if(FDE_RUNTIME_DEBUG)
+    target_compile_definitions(FordEngine PRIVATE FDE_RUNTIME_DEBUG_DEFAULT=1)
+else()
+    target_compile_definitions(FordEngine PRIVATE FDE_RUNTIME_DEBUG_DEFAULT=0)
+endif()
 
 target_sources(FordEngine PRIVATE 
     src/Asset/AssetId.cpp
@@ -29,6 +36,10 @@ target_sources(FordEngine PRIVATE
     src/Editor/EditorConsole.cpp
     src/Editor/EditorPreferences.cpp
     src/Editor/EditorScene3DTools.cpp
+    src/Runtime/RuntimeApplication.cpp
+    src/Runtime/RuntimeDebugLayer.cpp
+    src/Runtime/RuntimeMeshResolve.cpp
+    src/Runtime/RuntimeSession.cpp
     src/Renderer/Camera2D.cpp
     src/Renderer/Camera3D.cpp
     src/Renderer/RenderCommand.cpp
@@ -74,3 +85,4 @@ if(WIN32)
 endif()
 
 add_subdirectory(Editor)
+add_subdirectory(RuntimeApp)

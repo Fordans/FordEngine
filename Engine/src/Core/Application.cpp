@@ -59,6 +59,8 @@ void Application::Run()
             glClear(GL_COLOR_BUFFER_BIT);
         }
 
+        OnRender();
+
         m_imgui->EndFrame();
         m_window->SwapBuffers();
     }

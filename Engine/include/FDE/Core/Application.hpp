@@ -23,6 +23,8 @@ class FDE_API Application
     /// Called after glfwPollEvents, before ImGui NewFrame (e.g. sync io.ConfigFlags with capture state).
     virtual void OnBeforeImGuiNewFrame() {}
     virtual void OnUpdate() {}
+    /// Called after the default framebuffer clear, before ImGui render/submit.
+    virtual void OnRender() {}
     virtual void OnWindowCreated() {}
     virtual void OnRunEnd() {}
 

@@ -9,6 +9,9 @@ endif()
 
 add_executable(FordEditor ${FordEditor_SOURCES})
 target_link_libraries(FordEditor PRIVATE FordEngine)
+if(WIN32)
+    target_link_libraries(FordEditor PRIVATE shell32)
+endif()
 
 # Copy Resources to exe dir (icons, fonts, etc.)
 add_custom_command(TARGET FordEditor POST_BUILD

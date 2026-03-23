@@ -22,7 +22,6 @@ cmake_install.cmake
 
 # Compiled objects & binaries
 *.o
-*.obj
 *.lo
 *.a
 *.lib

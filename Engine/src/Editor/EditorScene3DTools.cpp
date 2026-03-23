@@ -316,8 +316,8 @@ entt::entity TryPickMesh3DEntity(Scene& scene, glm::vec2 mouseScreen, const ImVe
         glm::mat4 inv = glm::inverse(model);
         glm::vec3 lo = glm::vec3(inv * glm::vec4(ro, 1.f));
         glm::vec3 ld = glm::normalize(glm::vec3(inv * glm::vec4(rd, 0.f)));
-        glm::vec3 bmin(-0.5f);
-        glm::vec3 bmax(0.5f);
+        glm::vec3 bmin = mesh.localBoundsMin;
+        glm::vec3 bmax = mesh.localBoundsMax;
         float t;
         if (RayAABBSimple(lo, ld, bmin, bmax, t) && t >= 0.f && t < bestT)
         {

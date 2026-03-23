@@ -17,8 +17,10 @@
 #include "FDE/Window/Window.hpp"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include "imgui.h"
+#include <entt.hpp>
 #include "FDE/Renderer/Camera2D.hpp"
 #include "FDE/Renderer/Shader.hpp"
 #include "imgui_impl_opengl3.h"
@@ -198,6 +200,29 @@ FDE::Scene3D* CreateDefaultScene3D(FDE::World* world)
     meshComp.vertexArray = nullptr;
     meshComp.meshAsset = "builtin:cube";
     scene->AddComponent<FDE::Mesh3DComponent>(cubeObj, meshComp);
+
+    FDE::Object skullObj = scene->CreateObject();
+    scene->AddComponent<FDE::TagComponent>(skullObj, "Skull");
+    FDE::Transform3DComponent skullTransform;
+    skullTransform.position = glm::vec3(2.5f, 0.0f, 0.0f);
+    skullTransform.scale = glm::vec3(0.04f);
+    scene->AddComponent<FDE::Transform3DComponent>(skullObj, skullTransform);
+    FDE::Mesh3DComponent skullMesh;
+    skullMesh.vertexArray = nullptr;
+    skullMesh.meshAsset = "engine:skull/skull.3ds";
+    skullMesh.albedoTextureAsset = "engine:skull/front.jpg";
+    scene->AddComponent<FDE::Mesh3DComponent>(skullObj, skullMesh);
+
+    FDE::Object skeletonObj = scene->CreateObject();
+    scene->AddComponent<FDE::TagComponent>(skeletonObj, "Skeleton");
+    FDE::Transform3DComponent skeletonTransform;
+    skeletonTransform.position = glm::vec3(-2.5f, 0.0f, 0.0f);
+    skeletonTransform.scale = glm::vec3(0.04f);
+    scene->AddComponent<FDE::Transform3DComponent>(skeletonObj, skeletonTransform);
+    FDE::Mesh3DComponent skeletonMesh;
+    skeletonMesh.vertexArray = nullptr;
+    skeletonMesh.meshAsset = "engine:Skeleton/skeleton.obj";
+    scene->AddComponent<FDE::Mesh3DComponent>(skeletonObj, skeletonMesh);
     return scene;
 }
 
@@ -211,9 +236,9 @@ void ResolveMesh3DInScene(FDE::Scene* scene, FDE::AssetManager* assets)
     for (auto entity : reg.view<FDE::Mesh3DComponent>())
     {
         auto& mesh = reg.get<FDE::Mesh3DComponent>(entity);
-        if (mesh.vertexArray && mesh.vertexArray->GetIndexCount() > 0)
-            continue;
-        use->ResolveMesh3D(mesh);
+        if (!mesh.vertexArray || mesh.vertexArray->GetIndexCount() == 0)
+            use->ResolveMesh3D(mesh);
+        use->ResolveMesh3DAlbedo(mesh);
     }
 }
 
@@ -252,9 +277,9 @@ void ResolvePendingMeshes(FDE::World* world, FDE::AssetManager* assets)
         for (auto entity : view3d)
         {
             auto& mesh = view3d.get<FDE::Mesh3DComponent>(entity);
-            if (mesh.vertexArray && mesh.vertexArray->GetIndexCount() > 0)
-                continue;
-            resolve3d->ResolveMesh3D(mesh);
+            if (!mesh.vertexArray || mesh.vertexArray->GetIndexCount() == 0)
+                resolve3d->ResolveMesh3D(mesh);
+            resolve3d->ResolveMesh3DAlbedo(mesh);
         }
     }
 }
@@ -1220,11 +1245,28 @@ void EditorApplication::RenderDetailView(ImGuiID dockspace_id)
             }
         }
 
-        if (scene->HasComponent<Mesh3DComponent>(m_selectedObject))
+        if (auto* mesh3 = scene->GetComponent<Mesh3DComponent>(m_selectedObject))
         {
             if (ImGui::CollapsingHeader("Mesh3D"))
             {
-                ImGui::TextDisabled("(Mesh component - no editable properties)");
+                static char meshBuf[512];
+                static char albedoBuf[512];
+                static entt::entity lastEntity = entt::null;
+                if (lastEntity != m_selectedObject.GetEntity())
+                {
+                    lastEntity = m_selectedObject.GetEntity();
+                    std::snprintf(meshBuf, sizeof(meshBuf), "%s", mesh3->meshAsset.c_str());
+                    std::snprintf(albedoBuf, sizeof(albedoBuf), "%s", mesh3->albedoTextureAsset.c_str());
+                }
+                if (ImGui::InputText("Mesh asset", meshBuf, sizeof(meshBuf)))
+                    mesh3->meshAsset = meshBuf;
+                if (ImGui::InputText("Albedo (GUID, Assets/..., engine:...)", albedoBuf, sizeof(albedoBuf)))
+                    mesh3->albedoTextureAsset = albedoBuf;
+                if (ImGui::Button("Apply mesh / texture reload"))
+                {
+                    mesh3->vertexArray.reset();
+                    mesh3->albedoTexture.reset();
+                }
             }
         }
     }

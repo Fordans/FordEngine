@@ -1,5 +1,6 @@
 #pragma once
 
+#include "FDE/Asset/Texture2DResource.hpp"
 #include "FDE/Export.hpp"
 #include "FDE/Renderer/VertexArray.hpp"
 #include <glm/glm.hpp>
@@ -41,11 +42,18 @@ struct FDE_API Transform3DComponent
     glm::vec3 scale{1.0f, 1.0f, 1.0f};
 };
 
-/// 3D mesh (same vertex layout as 2D colored mesh: position + RGB).
+/// 3D mesh: position + RGB + UV (see MeshImporter / builtin cube).
+/// meshAsset: "builtin:cube", "engine:<path>", project GUID, "Assets/...model.ext", or logical path.
+/// \p albedoTextureAsset: optional Texture2D GUID or Assets/... image path.
+/// \p localBounds* are model-space AABB used for picking (defaults match unit cube).
 struct FDE_API Mesh3DComponent
 {
     std::shared_ptr<VertexArray> vertexArray;
     std::string meshAsset;
+    std::string albedoTextureAsset;
+    std::shared_ptr<Texture2DResource> albedoTexture;
+    glm::vec3 localBoundsMin{-0.5f, -0.5f, -0.5f};
+    glm::vec3 localBoundsMax{0.5f, 0.5f, 0.5f};
 };
 
 } // namespace FDE

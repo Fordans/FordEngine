@@ -1,6 +1,14 @@
 #include "FDE/pch.hpp"
 #include "FDE/Core/FileSystem.hpp"
 
+#include <filesystem>
+#include <vector>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#elif defined(__linux__)
+#include <unistd.h>
+#endif
+
 namespace FDE
 {
 
@@ -18,10 +26,24 @@ std::string FileSystem::GetExecutableDirectory()
     std::filesystem::path p(path);
     return p.parent_path().string();
 #elif defined(__APPLE__)
-    // TODO: implement for macOS (NSBundle)
-    return {};
+    uint32_t bufsize = 0;
+    _NSGetExecutablePath(nullptr, &bufsize);
+    if (bufsize == 0)
+        return {};
+    std::vector<char> buf(bufsize);
+    if (_NSGetExecutablePath(buf.data(), &bufsize) != 0)
+        return {};
+    std::filesystem::path exe(buf.data());
+    return exe.parent_path().string();
+#elif defined(__linux__)
+    std::vector<char> buf(4096);
+    const ssize_t len = readlink("/proc/self/exe", buf.data(), buf.size() - 1);
+    if (len <= 0)
+        return {};
+    buf[static_cast<size_t>(len)] = '\0';
+    std::filesystem::path exe(buf.data());
+    return exe.parent_path().string();
 #else
-    // TODO: implement for Linux (/proc/self/exe)
     return {};
 #endif
 }

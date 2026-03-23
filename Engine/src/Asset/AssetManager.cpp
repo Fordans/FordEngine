@@ -1,6 +1,7 @@
 #include "FDE/pch.hpp"
 #include "FDE/Asset/AssetManager.hpp"
 #include "FDE/Asset/AssetId.hpp"
+#include "FDE/Asset/MeshImporter.hpp"
 #include "FDE/Core/FileSystem.hpp"
 #include "FDE/Core/Log.hpp"
 #include "FDE/Renderer/BufferLayout.hpp"
@@ -9,6 +10,7 @@
 #include "FDE/Renderer/VertexBuffer.hpp"
 #include <glad/glad.h>
 #include <json11.hpp>
+#include <filesystem>
 #include <fstream>
 #include "stb_image.h"
 
@@ -50,15 +52,16 @@ void CreateBuiltinTriangle(std::shared_ptr<VertexArray>& outVAO)
 void CreateBuiltinCube(std::shared_ptr<VertexArray>& outVAO)
 {
     const float s = 0.5f;
+    // Per vertex: position (3), color (3), texcoord (2) — matches imported Mesh3D layout.
     auto quad = [](std::vector<float>& v, float ax, float ay, float az, float bx, float by, float bz, float cx,
                    float cy, float cz, float dx, float dy, float dz, float r, float g, float b) {
-        float tri[] = {ax, ay, az, r, g, b, bx, by, bz, r, g, b, cx, cy, cz, r, g, b,
-                       ax, ay, az, r, g, b, cx, cy, cz, r, g, b, dx, dy, dz, r, g, b};
+        float tri[] = {ax, ay, az, r, g, b, 0.f, 0.f, bx, by, bz, r, g, b, 1.f, 0.f, cx, cy, cz, r, g, b, 1.f, 1.f,
+                       ax, ay, az, r, g, b, 0.f, 0.f, cx, cy, cz, r, g, b, 1.f, 1.f, dx, dy, dz, r, g, b, 0.f, 1.f};
         v.insert(v.end(), std::begin(tri), std::end(tri));
     };
 
     std::vector<float> verts;
-    verts.reserve(36u * 6u);
+    verts.reserve(36u * 8u);
     // +Z (front)
     quad(verts, -s, -s, s, s, -s, s, s, s, s, -s, s, s, 0.25f, 0.45f, 1.0f);
     // -Z (back)
@@ -77,7 +80,8 @@ void CreateBuiltinCube(std::shared_ptr<VertexArray>& outVAO)
         indices[i] = i;
 
     auto vbo = VertexBuffer::Create(verts.data(), verts.size() * sizeof(float));
-    BufferLayout layout = {{ShaderDataType::Float3, "a_Position"}, {ShaderDataType::Float3, "a_Color"}};
+    BufferLayout layout = {{ShaderDataType::Float3, "a_Position"}, {ShaderDataType::Float3, "a_Color"},
+                           {ShaderDataType::Float2, "a_TexCoord"}};
     outVAO = VertexArray::Create();
     if (outVAO && vbo)
     {
@@ -87,16 +91,6 @@ void CreateBuiltinCube(std::shared_ptr<VertexArray>& outVAO)
 }
 
 } // namespace
-
-Texture2DResource::~Texture2DResource()
-{
-    if (glTextureId != 0)
-    {
-        GLuint t = static_cast<GLuint>(glTextureId);
-        glDeleteTextures(1, &t);
-        glTextureId = 0;
-    }
-}
 
 AssetManager::AssetManager() = default;
 
@@ -132,6 +126,7 @@ void AssetManager::Shutdown()
         m_loadQueue->Shutdown();
     m_loadQueue.reset();
     m_meshCache.clear();
+    m_mesh3DLocalBoundsCache.clear();
     m_shaderCache.clear();
     m_textureCache.clear();
     m_pack.reset();
@@ -309,16 +304,233 @@ bool AssetManager::ResolveMesh3D(Mesh3DComponent& mesh)
     if (mesh.meshAsset.empty())
         return false;
 
+    namespace fs = std::filesystem;
+
+    static constexpr const char kMesh3DImportRevision[] = "@mi5";
+
+    auto mesh3HitCache = [&](const std::string& cacheKey) -> bool {
+        auto it = m_meshCache.find(cacheKey);
+        if (it == m_meshCache.end())
+            return false;
+        mesh.vertexArray = it->second;
+        auto bit = m_mesh3DLocalBoundsCache.find(cacheKey);
+        if (bit != m_mesh3DLocalBoundsCache.end())
+        {
+            mesh.localBoundsMin = bit->second.first;
+            mesh.localBoundsMax = bit->second.second;
+        }
+        return true;
+    };
+
+    auto mesh3ImportPath = [&](const std::string& cacheKey, const std::string& absPath) -> bool {
+        if (mesh3HitCache(cacheKey))
+            return true;
+        glm::vec3 bmin;
+        glm::vec3 bmax;
+        std::shared_ptr<VertexArray> va;
+        if (!MeshImporter::LoadSceneMeshesMerged(absPath, va, &bmin, &bmax) || !va)
+            return false;
+        m_meshCache[cacheKey] = va;
+        m_mesh3DLocalBoundsCache[cacheKey] = {bmin, bmax};
+        mesh.vertexArray = va;
+        mesh.localBoundsMin = bmin;
+        mesh.localBoundsMax = bmax;
+        return true;
+    };
+
+    auto mesh3ImportMemory = [&](const std::string& cacheKey, const std::vector<uint8_t>& blob,
+                                 std::string_view hintExt) -> bool {
+        if (mesh3HitCache(cacheKey))
+            return true;
+        glm::vec3 bmin;
+        glm::vec3 bmax;
+        std::shared_ptr<VertexArray> va;
+        if (!MeshImporter::LoadSceneMeshesMergedFromMemory(blob.data(), blob.size(), hintExt, va, &bmin, &bmax) || !va)
+            return false;
+        m_meshCache[cacheKey] = va;
+        m_mesh3DLocalBoundsCache[cacheKey] = {bmin, bmax};
+        mesh.vertexArray = va;
+        mesh.localBoundsMin = bmin;
+        mesh.localBoundsMax = bmax;
+        return true;
+    };
+
+    auto lowerExt = [](const fs::path& p) {
+        std::string e = p.extension().string();
+        for (char& c : e)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return e;
+    };
+
+    auto isAssimpMeshExt = [](std::string_view ext) {
+        return ext == ".obj" || ext == ".fbx" || ext == ".3ds" || ext == ".dae" || ext == ".gltf" || ext == ".glb";
+    };
+
+    const std::string& key = mesh.meshAsset;
+
     if (mesh.meshAsset == "builtin:cube")
     {
+        auto it = m_meshCache.find(key);
+        if (it != m_meshCache.end())
+        {
+            mesh.vertexArray = it->second;
+            mesh.localBoundsMin = glm::vec3(-0.5f);
+            mesh.localBoundsMax = glm::vec3(0.5f);
+            return true;
+        }
         std::shared_ptr<VertexArray> va;
         CreateBuiltinCube(va);
+        if (!va)
+            return false;
+        m_meshCache[key] = va;
         mesh.vertexArray = va;
+        mesh.localBoundsMin = glm::vec3(-0.5f);
+        mesh.localBoundsMax = glm::vec3(0.5f);
         return true;
     }
 
-    FDE_LOG_CLIENT_WARN("Mesh3D asset not implemented: {}", mesh.meshAsset);
+    // Engine-shipped resources: Resources/<path> via FileSystem::ResolveEngineResource
+    static constexpr const char kEnginePrefix[] = "engine:";
+    static constexpr size_t kEnginePrefixLen = sizeof(kEnginePrefix) - 1u;
+    if (mesh.meshAsset.size() > kEnginePrefixLen
+        && mesh.meshAsset.compare(0, kEnginePrefixLen, kEnginePrefix) == 0)
+    {
+        const std::string cacheKey = key + kMesh3DImportRevision;
+        const std::string rel = mesh.meshAsset.substr(kEnginePrefixLen);
+        const std::string absPath = FileSystem::ResolveEngineResource(rel);
+        if (absPath.empty())
+        {
+            FDE_LOG_CLIENT_WARN("Engine mesh not found (Resources/{}): {}", rel, mesh.meshAsset);
+            return false;
+        }
+        if (!mesh3ImportPath(cacheKey, absPath))
+        {
+            FDE_LOG_CLIENT_WARN("Failed to load engine mesh: {}", absPath);
+            return false;
+        }
+        return true;
+    }
+
+    const AssetRecord* rec = ResolveRecordFromMeshString(mesh.meshAsset);
+    if (rec && rec->type == AssetType::Mesh3D)
+    {
+        const std::string cacheKey = rec->guid.str() + kMesh3DImportRevision;
+        if (mesh3HitCache(cacheKey))
+            return true;
+
+        const std::string absBuilt = ResolveBuiltAbsolute(*rec);
+        if (!absBuilt.empty() && fs::exists(absBuilt) && fs::is_regular_file(absBuilt))
+        {
+            if (mesh3ImportPath(cacheKey, absBuilt))
+                return true;
+        }
+
+        if (m_pack)
+        {
+            for (size_t i = 0; i < m_pack->GetIndex().size(); ++i)
+            {
+                if (m_pack->GetIndex()[i].guid != rec->guid)
+                    continue;
+                std::vector<uint8_t> blob;
+                if (!m_pack->ReadBlob(i, blob) || blob.empty())
+                    break;
+                const std::string hint = lowerExt(fs::path(rec->logicalPath));
+                if (mesh3ImportMemory(cacheKey, blob, hint))
+                    return true;
+                break;
+            }
+        }
+
+        const std::string absSrc = FileSystem::ResolveProjectPath(rec->logicalPath);
+        if (!absSrc.empty() && fs::exists(absSrc) && fs::is_regular_file(absSrc))
+        {
+            if (mesh3ImportPath(cacheKey, absSrc))
+                return true;
+        }
+
+        FDE_LOG_CLIENT_WARN("Failed to load Mesh3D asset: {}", rec->logicalPath);
+        return false;
+    }
+
+    // Orphan file under Assets/ (not yet in registry): load directly if extension is supported.
+    const std::string normPath = NormalizeLogicalPath(mesh.meshAsset);
+    if (normPath.size() >= 7 && normPath.compare(0, 7, "Assets/") == 0)
+    {
+        const std::string absOrphan = FileSystem::ResolveProjectPath(normPath);
+        if (!absOrphan.empty() && fs::exists(absOrphan) && fs::is_regular_file(absOrphan))
+        {
+            const std::string ext = lowerExt(absOrphan);
+            if (isAssimpMeshExt(ext))
+            {
+                const std::string cacheKey = normPath + kMesh3DImportRevision;
+                if (mesh3ImportPath(cacheKey, absOrphan))
+                    return true;
+            }
+        }
+    }
+
+    FDE_LOG_CLIENT_WARN("Mesh3D asset not found or unsupported: {}", mesh.meshAsset);
     return false;
+}
+
+void AssetManager::ResolveMesh3DAlbedo(Mesh3DComponent& mesh)
+{
+    mesh.albedoTexture.reset();
+    if (mesh.albedoTextureAsset.empty())
+        return;
+
+    static constexpr const char kEnginePrefix[] = "engine:";
+    static constexpr size_t kEnginePrefixLen = sizeof(kEnginePrefix) - 1u;
+    if (mesh.albedoTextureAsset.size() > kEnginePrefixLen
+        && mesh.albedoTextureAsset.compare(0, kEnginePrefixLen, kEnginePrefix) == 0)
+    {
+        const std::string cacheKey = mesh.albedoTextureAsset;
+        auto cit = m_textureCache.find(cacheKey);
+        if (cit != m_textureCache.end())
+        {
+            mesh.albedoTexture = cit->second;
+            return;
+        }
+
+        const std::string rel = mesh.albedoTextureAsset.substr(kEnginePrefixLen);
+        const std::string absPath = FileSystem::ResolveEngineResource(rel);
+        if (absPath.empty())
+        {
+            FDE_LOG_CLIENT_WARN("Engine albedo texture not found (Resources/{}): {}", rel, mesh.albedoTextureAsset);
+            return;
+        }
+
+        int w = 0, h = 0, channels = 0;
+        unsigned char* pixels = stbi_load(absPath.c_str(), &w, &h, &channels, 4);
+        if (!pixels)
+        {
+            FDE_LOG_CLIENT_WARN("Failed to load engine texture: {}", absPath);
+            return;
+        }
+
+        auto tex = std::make_shared<Texture2DResource>();
+        glGenTextures(1, &tex->glTextureId);
+        glBindTexture(GL_TEXTURE_2D, tex->glTextureId);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        stbi_image_free(pixels);
+        tex->width = w;
+        tex->height = h;
+        m_textureCache[cacheKey] = tex;
+        mesh.albedoTexture = tex;
+        return;
+    }
+
+    const AssetRecord* rec = ResolveRecordFromMeshString(mesh.albedoTextureAsset);
+    if (!rec || rec->type != AssetType::Texture2D)
+    {
+        FDE_LOG_CLIENT_WARN("Mesh3D albedo texture not found or wrong type: {}", mesh.albedoTextureAsset);
+        return;
+    }
+
+    mesh.albedoTexture = LoadTexture2D(rec->guid);
 }
 
 std::shared_ptr<Shader> AssetManager::LoadShader(const AssetId& id)

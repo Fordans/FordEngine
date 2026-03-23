@@ -1,5 +1,8 @@
 #include "FDE/pch.hpp"
 #include "FDE/Project/ProjectDescriptor.hpp"
+#include "FDE/Asset/AssetId.hpp"
+#include "FDE/Asset/AssetRegistry.hpp"
+#include "FDE/Asset/AssetType.hpp"
 #include "FDE/Scene/Components.hpp"
 #include "FDE/Scene/Object.hpp"
 #include "FDE/Scene/Scene.hpp"
@@ -11,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <string_view>
 
 namespace FDE
 {
@@ -40,10 +44,45 @@ constexpr const char* KEY_ROTATION = "rotation";
 constexpr const char* KEY_SCALE = "scale";
 constexpr const char* KEY_MESH = "mesh";
 constexpr const char* MESH_BUILTIN_TRIANGLE = "builtin:triangle";
+constexpr const char* KEY_ALBEDO_TEXTURE = "albedoTexture";
+
+bool LogicalPathHasMesh3DExtension(std::string_view logicalPath)
+{
+    const size_t dot = logicalPath.find_last_of('.');
+    if (dot == std::string_view::npos || dot + 1 >= logicalPath.size())
+        return false;
+    std::string ext(logicalPath.substr(dot));
+    for (char& c : ext)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return ext == ".obj" || ext == ".fbx" || ext == ".3ds" || ext == ".dae" || ext == ".gltf" || ext == ".glb";
+}
+
+bool MeshAssetImpliesScene3D(std::string_view mesh, const AssetRegistry* registry)
+{
+    if (mesh == MESH_BUILTIN_CUBE)
+        return true;
+    static constexpr std::string_view kEngine = "engine:";
+    if (mesh.size() >= kEngine.size() && mesh.compare(0, kEngine.size(), kEngine) == 0)
+        return true;
+
+    const std::string norm = NormalizeLogicalPath(mesh);
+    if (norm.size() >= 7 && norm.compare(0, 7, "Assets/") == 0 && LogicalPathHasMesh3DExtension(norm))
+        return true;
+
+    if (registry)
+    {
+        if (auto id = AssetId::Parse(std::string(mesh)))
+        {
+            if (const AssetRecord* rec = registry->FindByGuid(*id))
+                return rec->type == AssetType::Mesh3D;
+        }
+    }
+    return false;
+}
 } // namespace
 
 static json11::Json SerializeWorld(const World& world);
-static bool DeserializeWorld(const json11::Json& json, World& world);
+static bool DeserializeWorld(const json11::Json& json, World& world, const AssetRegistry* assetRegistry);
 
 bool ProjectDescriptor::LoadFromDirectory(const std::string& projectRoot, ProjectDescriptor& outDescriptor,
                                           std::string& outError, World* outWorld)
@@ -131,7 +170,12 @@ bool ProjectDescriptor::LoadFromFile(const std::string& fprojectPath, ProjectDes
         auto itWorld = obj.find(KEY_WORLD);
         if (itWorld != obj.end() && itWorld->second.is_object())
         {
-            if (!DeserializeWorld(itWorld->second, *outWorld))
+            const std::string projectRoot = path.parent_path().string();
+            AssetRegistry assetReg;
+            std::string regErr;
+            AssetRegistry::LoadFromProject(projectRoot, assetReg, regErr);
+
+            if (!DeserializeWorld(itWorld->second, *outWorld, &assetReg))
             {
                 outError = "Failed to deserialize world data";
                 return false;
@@ -270,6 +314,8 @@ static json11::Json SerializeWorld(const World& world)
                     meshVal = MESH_BUILTIN_CUBE;
                 if (!meshVal.empty())
                     objData[KEY_MESH] = meshVal;
+                if (!mesh3->albedoTextureAsset.empty())
+                    objData[KEY_ALBEDO_TEXTURE] = mesh3->albedoTextureAsset;
             }
 
             objectsArr.push_back(std::move(objData));
@@ -282,7 +328,7 @@ static json11::Json SerializeWorld(const World& world)
     return json11::Json(std::move(worldObj));
 }
 
-static bool DeserializeWorld(const json11::Json& json, World& world)
+static bool DeserializeWorld(const json11::Json& json, World& world, const AssetRegistry* assetRegistry)
 {
     if (!json.is_object())
         return false;
@@ -325,7 +371,7 @@ static bool DeserializeWorld(const json11::Json& json, World& world)
                     needScene3D = true;
                 auto itPeekMesh = peekData.find(KEY_MESH);
                 if (itPeekMesh != peekData.end() && itPeekMesh->second.is_string()
-                    && itPeekMesh->second.string_value() == MESH_BUILTIN_CUBE)
+                    && MeshAssetImpliesScene3D(itPeekMesh->second.string_value(), assetRegistry))
                     needScene3D = true;
             }
         }
@@ -453,12 +499,16 @@ static bool DeserializeWorld(const json11::Json& json, World& world)
             if (itMesh != objData.end() && itMesh->second.is_string())
             {
                 std::string meshVal = itMesh->second.string_value();
-                const bool useMesh3D = (dynamic_cast<Scene3D*>(scene) != nullptr) || (meshVal == MESH_BUILTIN_CUBE);
+                const bool useMesh3D =
+                    (dynamic_cast<Scene3D*>(scene) != nullptr) || MeshAssetImpliesScene3D(meshVal, assetRegistry);
                 if (useMesh3D)
                 {
                     Mesh3DComponent meshComp;
                     meshComp.vertexArray = nullptr;
                     meshComp.meshAsset = meshVal;
+                    auto itAlbedo = objData.find(KEY_ALBEDO_TEXTURE);
+                    if (itAlbedo != objData.end() && itAlbedo->second.is_string())
+                        meshComp.albedoTextureAsset = itAlbedo->second.string_value();
                     scene->AddComponent<Mesh3DComponent>(entity, meshComp);
                 }
                 else

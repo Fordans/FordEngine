@@ -18,4 +18,6 @@ add_custom_command(TARGET FordEditor POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/Resources/file.png $<TARGET_FILE_DIR:FordEditor>/Resources/
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/Resources/folder.png $<TARGET_FILE_DIR:FordEditor>/Resources/
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/Resources/Angel wish.ttf" $<TARGET_FILE_DIR:FordEditor>/Resources/
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/Resources/skull $<TARGET_FILE_DIR:FordEditor>/Resources/skull
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/Resources/Skeleton $<TARGET_FILE_DIR:FordEditor>/Resources/Skeleton
 )

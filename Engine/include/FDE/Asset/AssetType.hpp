@@ -15,6 +15,7 @@ enum class AssetType : uint8_t
     Texture2D,
     Shader,
     Mesh2D,
+    Mesh3D,
 };
 
 FDE_API const char* AssetTypeToString(AssetType t);

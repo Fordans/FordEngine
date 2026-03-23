@@ -42,7 +42,7 @@ struct FDE_API Scene3DGizmoState
     glm::vec2 rotateStartDir{0.f}; // in plane basis
 };
 
-/// Screen-space ray vs Mesh3D + Transform3D entities (AABB pick; builtin:cube uses unit cube).
+/// Screen-space ray vs Mesh3D + Transform3D entities (AABB pick using \p Mesh3DComponent local bounds).
 FDE_API entt::entity TryPickMesh3DEntity(Scene& scene, glm::vec2 mouseScreen, const ImVec2& imgMin,
                                          const ImVec2& imgMax, const Camera3D& camera, uint32_t viewportWidth,
                                          uint32_t viewportHeight);

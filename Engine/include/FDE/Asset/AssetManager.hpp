@@ -3,9 +3,11 @@
 #include "FDE/Asset/AssetLoadQueue.hpp"
 #include "FDE/Asset/AssetPack.hpp"
 #include "FDE/Asset/AssetRegistry.hpp"
+#include "FDE/Asset/Texture2DResource.hpp"
 #include "FDE/Export.hpp"
 #include "FDE/Renderer/Shader.hpp"
 #include "FDE/Scene/Components.hpp"
+#include <glm/glm.hpp>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -14,15 +16,6 @@ namespace FDE
 {
 
 class VertexArray;
-
-/// GPU texture handle + dimensions (GL texture name).
-struct FDE_API Texture2DResource
-{
-    unsigned int glTextureId = 0;
-    int width = 0;
-    int height = 0;
-    ~Texture2DResource();
-};
 
 /// Runtime asset cache: registry + optional .fdepack + refcounted GPU objects.
 class FDE_API AssetManager
@@ -41,6 +34,8 @@ class FDE_API AssetManager
     /// Resolve builtin / guid / Assets/ path into vertexArray; increments cache use.
     bool ResolveMesh2D(Mesh2DComponent& mesh);
     bool ResolveMesh3D(Mesh3DComponent& mesh);
+    /// Loads \p mesh.albedoTexture from \p mesh.albedoTextureAsset (GUID or Assets/...). Clears texture if asset empty.
+    void ResolveMesh3DAlbedo(Mesh3DComponent& mesh);
 
     std::shared_ptr<Shader> LoadShader(const AssetId& id);
     std::shared_ptr<Texture2DResource> LoadTexture2D(const AssetId& id);
@@ -59,6 +54,8 @@ class FDE_API AssetManager
     std::unique_ptr<AssetPackReader> m_pack;
 
     std::unordered_map<std::string, std::shared_ptr<VertexArray>> m_meshCache;
+    /// Local-space AABB for imported / cached 3D meshes (key matches \p Mesh3DComponent::meshAsset).
+    std::unordered_map<std::string, std::pair<glm::vec3, glm::vec3>> m_mesh3DLocalBoundsCache;
     std::unordered_map<std::string, std::shared_ptr<Shader>> m_shaderCache;
     std::unordered_map<std::string, std::shared_ptr<Texture2DResource>> m_textureCache;
 

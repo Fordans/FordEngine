@@ -31,7 +31,9 @@ class FDE_API Renderer
     static void SetShader(Shader* shader);
     /// Returns the simple shader (position-only, u_Color uniform) for lines, debug draw, etc.
     static Shader* GetSimpleShader();
-    /// Restores the default shader (for colored meshes). Call after using GetSimpleShader().
+    /// Position + color + UV; optional \p u_UseTexture + \p u_Albedo (unit 0). Used for Mesh3D.
+    static Shader* GetMesh3DShader();
+    /// Restores the default shader (for colored meshes). Call after using GetSimpleShader() or GetMesh3DShader().
     static void UseDefaultShader();
 };
 

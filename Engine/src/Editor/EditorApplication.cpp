@@ -20,7 +20,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include "imgui.h"
-#include <entt.hpp>
 #include "FDE/Renderer/Camera2D.hpp"
 #include "FDE/Renderer/Shader.hpp"
 #include "imgui_impl_opengl3.h"
@@ -53,13 +52,32 @@ bool GlfwNavKeyDown(FDE::Window* window, int glfwKey)
 }
 
 #if defined(_WIN32)
-void Win32ClipCursorToSceneRect(float minX, float minY, float maxX, float maxY)
+// ClipCursor uses screen space; ImGui rects are GLFW client coordinates — convert with ClientToScreen.
+void Win32ClipCursorToSceneRect(GLFWwindow* gw, float minX, float minY, float maxX, float maxY)
 {
+    if (!gw)
+    {
+        ::ClipCursor(nullptr);
+        return;
+    }
+    HWND hwnd = glfwGetWin32Window(gw);
+    if (!hwnd)
+    {
+        ::ClipCursor(nullptr);
+        return;
+    }
+    POINT tl{static_cast<LONG>(std::floor(minX)), static_cast<LONG>(std::floor(minY))};
+    POINT br{static_cast<LONG>(std::ceil(maxX)), static_cast<LONG>(std::ceil(maxY))};
+    if (!::ClientToScreen(hwnd, &tl) || !::ClientToScreen(hwnd, &br))
+    {
+        ::ClipCursor(nullptr);
+        return;
+    }
     RECT r;
-    r.left = static_cast<LONG>(std::floor(minX));
-    r.top = static_cast<LONG>(std::floor(minY));
-    r.right = static_cast<LONG>(std::ceil(maxX));
-    r.bottom = static_cast<LONG>(std::ceil(maxY));
+    r.left = tl.x;
+    r.top = tl.y;
+    r.right = br.x;
+    r.bottom = br.y;
     if (r.right > r.left && r.bottom > r.top)
         ::ClipCursor(&r);
     else
@@ -210,7 +228,6 @@ FDE::Scene3D* CreateDefaultScene3D(FDE::World* world)
     FDE::Mesh3DComponent skullMesh;
     skullMesh.vertexArray = nullptr;
     skullMesh.meshAsset = "engine:skull/skull.3ds";
-    skullMesh.albedoTextureAsset = "engine:skull/front.jpg";
     scene->AddComponent<FDE::Mesh3DComponent>(skullObj, skullMesh);
 
     FDE::Object skeletonObj = scene->CreateObject();
@@ -236,9 +253,9 @@ void ResolveMesh3DInScene(FDE::Scene* scene, FDE::AssetManager* assets)
     for (auto entity : reg.view<FDE::Mesh3DComponent>())
     {
         auto& mesh = reg.get<FDE::Mesh3DComponent>(entity);
-        if (!mesh.vertexArray || mesh.vertexArray->GetIndexCount() == 0)
-            use->ResolveMesh3D(mesh);
-        use->ResolveMesh3DAlbedo(mesh);
+        if (mesh.vertexArray && mesh.vertexArray->GetIndexCount() > 0)
+            continue;
+        use->ResolveMesh3D(mesh);
     }
 }
 
@@ -277,9 +294,9 @@ void ResolvePendingMeshes(FDE::World* world, FDE::AssetManager* assets)
         for (auto entity : view3d)
         {
             auto& mesh = view3d.get<FDE::Mesh3DComponent>(entity);
-            if (!mesh.vertexArray || mesh.vertexArray->GetIndexCount() == 0)
-                resolve3d->ResolveMesh3D(mesh);
-            resolve3d->ResolveMesh3DAlbedo(mesh);
+            if (mesh.vertexArray && mesh.vertexArray->GetIndexCount() > 0)
+                continue;
+            resolve3d->ResolveMesh3D(mesh);
         }
     }
 }
@@ -1245,28 +1262,11 @@ void EditorApplication::RenderDetailView(ImGuiID dockspace_id)
             }
         }
 
-        if (auto* mesh3 = scene->GetComponent<Mesh3DComponent>(m_selectedObject))
+        if (scene->HasComponent<Mesh3DComponent>(m_selectedObject))
         {
             if (ImGui::CollapsingHeader("Mesh3D"))
             {
-                static char meshBuf[512];
-                static char albedoBuf[512];
-                static entt::entity lastEntity = entt::null;
-                if (lastEntity != m_selectedObject.GetEntity())
-                {
-                    lastEntity = m_selectedObject.GetEntity();
-                    std::snprintf(meshBuf, sizeof(meshBuf), "%s", mesh3->meshAsset.c_str());
-                    std::snprintf(albedoBuf, sizeof(albedoBuf), "%s", mesh3->albedoTextureAsset.c_str());
-                }
-                if (ImGui::InputText("Mesh asset", meshBuf, sizeof(meshBuf)))
-                    mesh3->meshAsset = meshBuf;
-                if (ImGui::InputText("Albedo (GUID, Assets/..., engine:...)", albedoBuf, sizeof(albedoBuf)))
-                    mesh3->albedoTextureAsset = albedoBuf;
-                if (ImGui::Button("Apply mesh / texture reload"))
-                {
-                    mesh3->vertexArray.reset();
-                    mesh3->albedoTexture.reset();
-                }
+                ImGui::TextDisabled("(Mesh component - no editable properties)");
             }
         }
     }
@@ -1599,7 +1599,7 @@ void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
                         {
 #if defined(_WIN32)
                             glfwSetInputMode(gw, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
-                            Win32ClipCursorToSceneRect(imgMin.x, imgMin.y, imgMax.x, imgMax.y);
+                            Win32ClipCursorToSceneRect(gw, imgMin.x, imgMin.y, imgMax.x, imgMax.y);
 #else
                             glfwSetInputMode(gw, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 #endif

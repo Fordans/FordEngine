@@ -2,10 +2,8 @@
 
 #include "FDE/Export.hpp"
 #include <glm/glm.hpp>
-#include <cstddef>
 #include <filesystem>
 #include <memory>
-#include <string_view>
 
 namespace FDE
 {
@@ -23,11 +21,6 @@ class FDE_API MeshImporter
     /// Optional \p outLocalMin / outLocalMax fill model-space axis-aligned bounds.
     static bool LoadSceneMeshesMerged(const std::filesystem::path& path, std::shared_ptr<VertexArray>& outVertexArray,
                                       glm::vec3* outLocalMin = nullptr, glm::vec3* outLocalMax = nullptr);
-
-    /// Same as \p LoadSceneMeshesMerged but from memory. \p formatHint is a file extension, e.g. ".obj" or "fbx".
-    static bool LoadSceneMeshesMergedFromMemory(const void* data, size_t dataSize, std::string_view formatHint,
-                                                std::shared_ptr<VertexArray>& outVertexArray,
-                                                glm::vec3* outLocalMin = nullptr, glm::vec3* outLocalMax = nullptr);
 };
 
 } // namespace FDE

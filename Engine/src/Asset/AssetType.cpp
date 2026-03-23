@@ -15,8 +15,6 @@ const char* AssetTypeToString(AssetType t)
         return "Shader";
     case AssetType::Mesh2D:
         return "Mesh2D";
-    case AssetType::Mesh3D:
-        return "Mesh3D";
     default:
         return "Unknown";
     }
@@ -30,8 +28,6 @@ AssetType AssetTypeFromString(std::string_view s)
         return AssetType::Shader;
     if (s == "Mesh2D")
         return AssetType::Mesh2D;
-    if (s == "Mesh3D")
-        return AssetType::Mesh3D;
     return AssetType::Unknown;
 }
 

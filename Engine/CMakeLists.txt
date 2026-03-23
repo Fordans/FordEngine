@@ -10,7 +10,6 @@ target_sources(FordEngine PRIVATE
     src/Asset/AssetPack.cpp
     src/Asset/AssetLoadQueue.cpp
     src/Asset/MeshImporter.cpp
-    src/Asset/Texture2DResource.cpp
     src/Core/Application.cpp
     src/Scene/Object.cpp
     src/Scene/Scene.cpp

@@ -65,45 +65,8 @@ void main()
 }
 )";
 
-const char* s_mesh3DVertexShader = R"(
-#version 330 core
-layout(location = 0) in vec3 a_Position;
-layout(location = 1) in vec3 a_Color;
-layout(location = 2) in vec2 a_TexCoord;
-
-uniform mat4 u_MVP;
-
-out vec3 v_Color;
-out vec2 v_TexCoord;
-
-void main()
-{
-    gl_Position = u_MVP * vec4(a_Position, 1.0);
-    v_Color = a_Color;
-    v_TexCoord = a_TexCoord;
-}
-)";
-
-const char* s_mesh3DFragmentShader = R"(
-#version 330 core
-layout(location = 0) out vec4 o_Color;
-
-in vec3 v_Color;
-in vec2 v_TexCoord;
-
-uniform int u_UseTexture;
-uniform sampler2D u_Albedo;
-
-void main()
-{
-    vec3 texRgb = (u_UseTexture != 0) ? texture(u_Albedo, v_TexCoord).rgb : vec3(1.0);
-    o_Color = vec4(v_Color * texRgb, 1.0);
-}
-)";
-
 std::unique_ptr<Shader> s_defaultShader;
 std::unique_ptr<Shader> s_simpleShader;
-std::unique_ptr<Shader> s_mesh3DShader;
 Shader* s_currentShader = nullptr;
 
 } // namespace
@@ -114,7 +77,6 @@ void Renderer::Init(GraphicsAPI api)
 
     s_defaultShader = Shader::Create(s_defaultVertexShader, s_defaultFragmentShader);
     s_simpleShader = Shader::Create(s_simpleVertexShader, s_simpleFragmentShader);
-    s_mesh3DShader = Shader::Create(s_mesh3DVertexShader, s_mesh3DFragmentShader);
     s_currentShader = s_defaultShader.get();
 }
 
@@ -122,7 +84,6 @@ void Renderer::Shutdown()
 {
     s_defaultShader.reset();
     s_simpleShader.reset();
-    s_mesh3DShader.reset();
     s_currentShader = nullptr;
 
     RenderCommand::Shutdown();
@@ -189,11 +150,6 @@ void Renderer::SetShader(Shader* shader)
 Shader* Renderer::GetSimpleShader()
 {
     return s_simpleShader.get();
-}
-
-Shader* Renderer::GetMesh3DShader()
-{
-    return s_mesh3DShader.get();
 }
 
 void Renderer::UseDefaultShader()

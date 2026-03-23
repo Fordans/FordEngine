@@ -12,7 +12,6 @@
 #include <cctype>
 #include <cfloat>
 #include <glm/glm.hpp>
-#include <string_view>
 
 namespace FDE
 {
@@ -24,7 +23,6 @@ struct Vertex
 {
     float px, py, pz;
     float r, g, b;
-    float u, v;
 };
 
 glm::mat4 AiMatrix4x4ToGlm(const aiMatrix4x4& from)
@@ -55,27 +53,6 @@ std::string LowerExtension(const std::filesystem::path& path)
     for (char& c : e)
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return e;
-}
-
-std::string NormalizeAssimpHint(std::string_view hint)
-{
-    if (hint.empty())
-        return ".obj";
-    std::string h(hint);
-    for (char& c : h)
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    if (h.front() != '.')
-        h.insert(h.begin(), '.');
-    return h;
-}
-
-unsigned ImportFlagsForExtension(std::string_view extWithDot)
-{
-    unsigned flags = aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_ImproveCacheLocality
-                     | aiProcess_GenSmoothNormals | aiProcess_ForceGenNormals | aiProcess_FlipUVs;
-    if (extWithDot == ".3ds")
-        flags |= aiProcess_FlipWindingOrder;
-    return flags;
 }
 
 bool MeshUsesVertexColors(const aiMesh* mesh)
@@ -146,18 +123,6 @@ void AppendMesh(const aiMesh* mesh, const glm::mat4& world, const glm::vec3& lig
             v.g = baseColor.g;
             v.b = baseColor.b;
         }
-
-        if (mesh->HasTextureCoords(0))
-        {
-            const aiVector3D& t = mesh->mTextureCoords[0][i];
-            v.u = t.x;
-            v.v = t.y;
-        }
-        else
-        {
-            v.u = 0.f;
-            v.v = 0.f;
-        }
     }
 
     for (unsigned f = 0; f < mesh->mNumFaces; ++f)
@@ -186,11 +151,28 @@ void ProcessNode(const aiScene* scene, const aiNode* node, const glm::mat4& pare
         ProcessNode(scene, node->mChildren[c], world, lightDir, baseColor, outVerts, outIndices, bmin, bmax);
 }
 
-bool BuildMeshFromScene(const aiScene* scene, const char* logPathOrNull, std::shared_ptr<VertexArray>& outVertexArray,
-                        glm::vec3* outLocalMin, glm::vec3* outLocalMax)
+} // namespace
+
+bool MeshImporter::LoadSceneMeshesMerged(const std::filesystem::path& path, std::shared_ptr<VertexArray>& outVertexArray,
+                                         glm::vec3* outLocalMin, glm::vec3* outLocalMax)
 {
+    outVertexArray.reset();
+
+    Assimp::Importer importer;
+    // Drop FixInfacingNormals: it often misclassifies organic meshes and inverts shading.
+    // .3ds face winding is often opposite OpenGL's default CCW "front"; flip winding then regenerate normals.
+    unsigned flags = aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_ImproveCacheLocality
+                     | aiProcess_GenSmoothNormals | aiProcess_ForceGenNormals;
+    const std::string ext = LowerExtension(path);
+    if (ext == ".3ds")
+        flags |= aiProcess_FlipWindingOrder;
+
+    const aiScene* scene = importer.ReadFile(path.string(), flags);
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
+    {
+        FDE_LOG_CLIENT_ERROR("Assimp: {}", importer.GetErrorString());
         return false;
+    }
 
     const glm::vec3 lightDir = glm::normalize(glm::vec3(0.45f, 0.85f, 0.35f));
     const glm::vec3 baseColor(0.72f, 0.70f, 0.68f);
@@ -204,10 +186,7 @@ bool BuildMeshFromScene(const aiScene* scene, const char* logPathOrNull, std::sh
 
     if (vertices.empty() || indices.empty())
     {
-        if (logPathOrNull)
-            FDE_LOG_CLIENT_ERROR("Assimp: no mesh geometry in {}", logPathOrNull);
-        else
-            FDE_LOG_CLIENT_ERROR("Assimp: no mesh geometry in memory buffer");
+        FDE_LOG_CLIENT_ERROR("Assimp: no mesh geometry in {}", path.string());
         return false;
     }
 
@@ -217,57 +196,13 @@ bool BuildMeshFromScene(const aiScene* scene, const char* logPathOrNull, std::sh
         *outLocalMax = bmax;
 
     auto vbo = VertexBuffer::Create(vertices.data(), vertices.size() * sizeof(Vertex));
-    BufferLayout layout = {{ShaderDataType::Float3, "a_Position"}, {ShaderDataType::Float3, "a_Color"},
-                           {ShaderDataType::Float2, "a_TexCoord"}};
+    BufferLayout layout = {{ShaderDataType::Float3, "a_Position"}, {ShaderDataType::Float3, "a_Color"}};
     outVertexArray = VertexArray::Create();
     if (!vbo || !outVertexArray)
         return false;
     outVertexArray->AddVertexBuffer(vbo, layout);
     outVertexArray->SetIndexBuffer(indices.data(), static_cast<uint32_t>(indices.size()));
     return true;
-}
-
-} // namespace
-
-bool MeshImporter::LoadSceneMeshesMerged(const std::filesystem::path& path, std::shared_ptr<VertexArray>& outVertexArray,
-                                         glm::vec3* outLocalMin, glm::vec3* outLocalMax)
-{
-    outVertexArray.reset();
-
-    Assimp::Importer importer;
-    const std::string ext = LowerExtension(path);
-    const unsigned flags = ImportFlagsForExtension(ext);
-
-    const aiScene* scene = importer.ReadFile(path.string(), flags);
-    if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
-    {
-        FDE_LOG_CLIENT_ERROR("Assimp: {}", importer.GetErrorString());
-        return false;
-    }
-
-    return BuildMeshFromScene(scene, path.string().c_str(), outVertexArray, outLocalMin, outLocalMax);
-}
-
-bool MeshImporter::LoadSceneMeshesMergedFromMemory(const void* data, size_t dataSize, std::string_view formatHint,
-                                                   std::shared_ptr<VertexArray>& outVertexArray, glm::vec3* outLocalMin,
-                                                   glm::vec3* outLocalMax)
-{
-    outVertexArray.reset();
-    if (!data || dataSize == 0)
-        return false;
-
-    const std::string hint = NormalizeAssimpHint(formatHint);
-    Assimp::Importer importer;
-    const unsigned flags = ImportFlagsForExtension(hint);
-
-    const aiScene* scene = importer.ReadFileFromMemory(data, dataSize, flags, hint.c_str());
-    if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
-    {
-        FDE_LOG_CLIENT_ERROR("Assimp (memory): {}", importer.GetErrorString());
-        return false;
-    }
-
-    return BuildMeshFromScene(scene, nullptr, outVertexArray, outLocalMin, outLocalMax);
 }
 
 } // namespace FDE

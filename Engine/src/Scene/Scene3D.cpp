@@ -1,7 +1,5 @@
 #include "FDE/pch.hpp"
 #include "FDE/Scene/Scene3D.hpp"
-#include "FDE/Renderer/Shader.hpp"
-#include <glad/glad.h>
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace FDE
@@ -21,10 +19,6 @@ void Scene3D::RenderMesh3DEntities(Scene& scene, const Camera3D& camera, uint32_
     glm::mat4 view = camera.GetViewMatrix();
     glm::mat4 projection = camera.GetProjectionMatrix(viewportWidth, viewportHeight);
 
-    Shader* mesh3dShader = Renderer::GetMesh3DShader();
-    if (mesh3dShader)
-        Renderer::SetShader(mesh3dShader);
-
     auto viewMeshes = scene.GetRegistry().view<Mesh3DComponent, Transform3DComponent>();
     for (auto entity : viewMeshes)
     {
@@ -41,26 +35,8 @@ void Scene3D::RenderMesh3DEntities(Scene& scene, const Camera3D& camera, uint32_
         model = glm::scale(model, transform.scale);
 
         Renderer::SetMVP(model, view, projection);
-
-        if (mesh3dShader)
-        {
-            const bool useTex = mesh.albedoTexture && mesh.albedoTexture->glTextureId != 0;
-            mesh3dShader->SetInt("u_UseTexture", useTex ? 1 : 0);
-            if (useTex)
-            {
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(mesh.albedoTexture->glTextureId));
-                mesh3dShader->SetInt("u_Albedo", 0);
-            }
-        }
-
         Renderer::DrawIndexed(mesh.vertexArray);
-
-        if (mesh3dShader && mesh.albedoTexture && mesh.albedoTexture->glTextureId != 0)
-            glBindTexture(GL_TEXTURE_2D, 0);
     }
-
-    Renderer::UseDefaultShader();
 }
 
 void Scene3D::Render(const Camera3D& camera, uint32_t viewportWidth, uint32_t viewportHeight)

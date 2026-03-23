@@ -54,8 +54,6 @@ AssetType TypeFromExtension(const std::filesystem::path& ext)
         return AssetType::Shader;
     if (e == ".fdemesh")
         return AssetType::Mesh2D;
-    if (e == ".obj" || e == ".fbx" || e == ".3ds" || e == ".dae" || e == ".gltf" || e == ".glb")
-        return AssetType::Mesh3D;
     return AssetType::Unknown;
 }
 

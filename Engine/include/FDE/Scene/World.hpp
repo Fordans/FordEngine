@@ -60,6 +60,9 @@ class FDE_API World
     /// Set the active scene by pointer. Must be a scene owned by this world.
     void SetActiveScene(Scene* scene);
 
+    /// Calls `OnUpdate` on the active scene only.
+    void OnUpdate(float deltaTime);
+
   private:
     std::unordered_map<std::string, std::unique_ptr<Scene>> m_scenes;
     Scene* m_activeScene = nullptr;

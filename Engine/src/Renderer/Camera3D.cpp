@@ -51,6 +51,19 @@ void Camera3D::ClearMouseLookSmoothing()
     m_lookSmoothY = 0.f;
 }
 
+void Camera3D::SetPositionYawPitch(const glm::vec3& position, float yawRadians, float pitchRadians)
+{
+    m_position = position;
+    const double tau = static_cast<double>(glm::two_pi<float>());
+    m_yaw = static_cast<float>(std::remainder(static_cast<double>(yawRadians), tau));
+    m_pitch = pitchRadians;
+    if (m_pitch > MAX_PITCH)
+        m_pitch = MAX_PITCH;
+    if (m_pitch < MIN_PITCH)
+        m_pitch = MIN_PITCH;
+    ClearMouseLookSmoothing();
+}
+
 void Camera3D::ApplyMouseLook(float deltaX, float deltaY, float sensitivityScale)
 {
     constexpr float sens = 0.005f;

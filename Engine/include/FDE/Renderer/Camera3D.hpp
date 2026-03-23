@@ -32,6 +32,12 @@ class FDE_API Camera3D
     glm::vec3 GetPosition() const { return m_position; }
     void SetPosition(const glm::vec3& p) { m_position = p; }
 
+    float GetYaw() const { return m_yaw; }
+    float GetPitch() const { return m_pitch; }
+
+    /// Sets pose from persisted editor/runtime view; clamps pitch and clears mouse-look smoothing.
+    void SetPositionYawPitch(const glm::vec3& position, float yawRadians, float pitchRadians);
+
     /// Normalized world-space view direction (into the scene).
     glm::vec3 GetForward() const;
 

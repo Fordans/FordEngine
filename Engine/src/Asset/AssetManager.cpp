@@ -1,6 +1,7 @@
 #include "FDE/pch.hpp"
 #include "FDE/Asset/AssetManager.hpp"
 #include "FDE/Asset/AssetId.hpp"
+#include "FDE/Asset/AssetType.hpp"
 #include "FDE/Asset/MeshImporter.hpp"
 #include "FDE/Core/FileSystem.hpp"
 #include "FDE/Core/Log.hpp"
@@ -51,34 +52,37 @@ void CreateBuiltinTriangle(std::shared_ptr<VertexArray>& outVAO)
 void CreateBuiltinCube(std::shared_ptr<VertexArray>& outVAO)
 {
     const float s = 0.5f;
-    auto quad = [](std::vector<float>& v, float ax, float ay, float az, float bx, float by, float bz, float cx,
-                   float cy, float cz, float dx, float dy, float dz, float r, float g, float b) {
-        float tri[] = {ax, ay, az, r, g, b, bx, by, bz, r, g, b, cx, cy, cz, r, g, b,
-                       ax, ay, az, r, g, b, cx, cy, cz, r, g, b, dx, dy, dz, r, g, b};
-        v.insert(v.end(), std::begin(tri), std::end(tri));
+    auto pushV = [](std::vector<float>& v, float x, float y, float z, float r, float g, float b, float u,
+                    float tv) {
+        v.insert(v.end(), {x, y, z, r, g, b, u, tv});
+    };
+    auto quad = [&](std::vector<float>& v, float ax, float ay, float az, float bx, float by, float bz, float cx,
+                    float cy, float cz, float dx, float dy, float dz, float r, float g, float b, float u0, float v0,
+                    float u1, float v1) {
+        pushV(v, ax, ay, az, r, g, b, u0, v0);
+        pushV(v, bx, by, bz, r, g, b, u1, v0);
+        pushV(v, cx, cy, cz, r, g, b, u1, v1);
+        pushV(v, ax, ay, az, r, g, b, u0, v0);
+        pushV(v, cx, cy, cz, r, g, b, u1, v1);
+        pushV(v, dx, dy, dz, r, g, b, u0, v1);
     };
 
     std::vector<float> verts;
-    verts.reserve(36u * 6u);
-    // +Z (front)
-    quad(verts, -s, -s, s, s, -s, s, s, s, s, -s, s, s, 0.25f, 0.45f, 1.0f);
-    // -Z (back)
-    quad(verts, s, -s, -s, -s, -s, -s, -s, s, -s, s, s, -s, 0.25f, 0.85f, 0.35f);
-    // +X
-    quad(verts, s, -s, s, s, -s, -s, s, s, -s, s, s, s, 1.0f, 0.35f, 0.25f);
-    // -X
-    quad(verts, -s, -s, -s, -s, -s, s, -s, s, s, -s, s, -s, 1.0f, 0.85f, 0.25f);
-    // +Y (top)
-    quad(verts, -s, s, s, s, s, s, s, s, -s, -s, s, -s, 0.9f, 0.9f, 0.95f);
-    // -Y (bottom)
-    quad(verts, -s, -s, -s, s, -s, -s, s, -s, s, -s, -s, s, 0.45f, 0.3f, 0.65f);
+    verts.reserve(36u * 8u);
+    quad(verts, -s, -s, s, s, -s, s, s, s, s, -s, s, s, 0.25f, 0.45f, 1.0f, 0.f, 0.f, 1.f, 1.f);
+    quad(verts, s, -s, -s, -s, -s, -s, -s, s, -s, s, s, -s, 0.25f, 0.85f, 0.35f, 0.f, 0.f, 1.f, 1.f);
+    quad(verts, s, -s, s, s, -s, -s, s, s, -s, s, s, s, 1.0f, 0.35f, 0.25f, 0.f, 0.f, 1.f, 1.f);
+    quad(verts, -s, -s, -s, -s, -s, s, -s, s, s, -s, s, -s, 1.0f, 0.85f, 0.25f, 0.f, 0.f, 1.f, 1.f);
+    quad(verts, -s, s, s, s, s, s, s, s, -s, -s, s, -s, 0.9f, 0.9f, 0.95f, 0.f, 0.f, 1.f, 1.f);
+    quad(verts, -s, -s, -s, s, -s, -s, s, -s, s, -s, -s, s, 0.45f, 0.3f, 0.65f, 0.f, 0.f, 1.f, 1.f);
 
     std::vector<uint32_t> indices(36u);
     for (uint32_t i = 0; i < 36u; ++i)
         indices[i] = i;
 
     auto vbo = VertexBuffer::Create(verts.data(), verts.size() * sizeof(float));
-    BufferLayout layout = {{ShaderDataType::Float3, "a_Position"}, {ShaderDataType::Float3, "a_Color"}};
+    BufferLayout layout = {{ShaderDataType::Float3, "a_Position"}, {ShaderDataType::Float3, "a_Color"},
+                           {ShaderDataType::Float2, "a_TexCoord"}};
     outVAO = VertexArray::Create();
     if (outVAO && vbo)
     {
@@ -444,6 +448,32 @@ std::shared_ptr<Shader> AssetManager::LoadShader(const AssetId& id)
     auto shared = std::shared_ptr<Shader>(shader.release());
     m_shaderCache[key] = shared;
     return shared;
+}
+
+bool AssetManager::ResolveMesh3DAlbedo(Mesh3DComponent& mesh)
+{
+    if (mesh.albedoTextureAsset.empty())
+    {
+        mesh.albedoTexture.reset();
+        return true;
+    }
+    if (mesh.albedoTexture && mesh.albedoTexture->glTextureId != 0)
+        return true;
+
+    const AssetRecord* rec = nullptr;
+    if (auto id = AssetId::Parse(mesh.albedoTextureAsset))
+        rec = m_registry.FindByGuid(*id);
+    else
+    {
+        std::string norm = NormalizeLogicalPath(mesh.albedoTextureAsset);
+        if (norm.size() >= 7u && norm.compare(0, 7, "Assets/") == 0)
+            rec = m_registry.FindByLogicalPath(norm);
+    }
+    if (!rec || rec->type != AssetType::Texture2D)
+        return false;
+
+    mesh.albedoTexture = LoadTexture2D(rec->guid);
+    return mesh.albedoTexture != nullptr;
 }
 
 std::shared_ptr<Texture2DResource> AssetManager::LoadTexture2D(const AssetId& id)

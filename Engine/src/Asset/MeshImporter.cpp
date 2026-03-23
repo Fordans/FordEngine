@@ -23,6 +23,7 @@ struct Vertex
 {
     float px, py, pz;
     float r, g, b;
+    float u, v;
 };
 
 glm::mat4 AiMatrix4x4ToGlm(const aiMatrix4x4& from)
@@ -123,6 +124,18 @@ void AppendMesh(const aiMesh* mesh, const glm::mat4& world, const glm::vec3& lig
             v.g = baseColor.g;
             v.b = baseColor.b;
         }
+
+        if (mesh->HasTextureCoords(0))
+        {
+            const aiVector3D& tc = mesh->mTextureCoords[0][i];
+            v.u = tc.x;
+            v.v = tc.y;
+        }
+        else
+        {
+            v.u = 0.f;
+            v.v = 0.f;
+        }
     }
 
     for (unsigned f = 0; f < mesh->mNumFaces; ++f)
@@ -196,7 +209,8 @@ bool MeshImporter::LoadSceneMeshesMerged(const std::filesystem::path& path, std:
         *outLocalMax = bmax;
 
     auto vbo = VertexBuffer::Create(vertices.data(), vertices.size() * sizeof(Vertex));
-    BufferLayout layout = {{ShaderDataType::Float3, "a_Position"}, {ShaderDataType::Float3, "a_Color"}};
+    BufferLayout layout = {{ShaderDataType::Float3, "a_Position"}, {ShaderDataType::Float3, "a_Color"},
+                           {ShaderDataType::Float2, "a_TexCoord"}};
     outVertexArray = VertexArray::Create();
     if (!vbo || !outVertexArray)
         return false;

@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.22)
 
 project(FDE VERSION 0.1.0)
 
+include(CTest)
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -21,3 +23,4 @@ endforeach()
 add_subdirectory(ThirdParty)
 
 add_subdirectory(Engine)
+add_subdirectory(Tests)

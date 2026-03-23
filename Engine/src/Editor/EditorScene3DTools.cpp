@@ -427,6 +427,8 @@ void Scene3D_UpdateGizmoInteraction(Scene3DTransformMode mode, Scene& scene, Obj
         state.dragging = false;
         state.activeAxis = 0;
         state.hoveredAxis = 0;
+        state.hasTransformBeforeGizmoDrag = false;
+        state.gizmoDragReleasedUndoPending = false;
         state.lastSelection = selected.GetEntity();
     }
 
@@ -445,6 +447,11 @@ void Scene3D_UpdateGizmoInteraction(Scene3DTransformMode mode, Scene& scene, Obj
     {
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
         {
+            if (state.hasTransformBeforeGizmoDrag)
+            {
+                state.gizmoDragReleasedUndoPending = true;
+                state.hasTransformBeforeGizmoDrag = false;
+            }
             state.dragging = false;
             state.activeAxis = 0;
         }
@@ -581,6 +588,11 @@ void Scene3D_OnViewportPrimaryClick(Scene3DTransformMode mode, Scene& scene, Obj
                 else
                     state.dragging = false;
             }
+            if (state.dragging)
+            {
+                state.transformBeforeGizmoDrag = *tr;
+                state.hasTransformBeforeGizmoDrag = true;
+            }
             return;
         }
     }
@@ -593,6 +605,8 @@ void Scene3D_OnViewportPrimaryClick(Scene3DTransformMode mode, Scene& scene, Obj
     state.dragging = false;
     state.activeAxis = 0;
     state.hoveredAxis = 0;
+    state.hasTransformBeforeGizmoDrag = false;
+    state.gizmoDragReleasedUndoPending = false;
     state.lastSelection = selected.IsValid() ? selected.GetEntity() : entt::null;
 }
 

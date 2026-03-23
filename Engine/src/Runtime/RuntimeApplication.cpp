@@ -3,6 +3,7 @@
 #include "FDE/Runtime/RuntimeApplication.hpp"
 #include "FDE/Runtime/RuntimeDebugLayer.hpp"
 #include "FDE/Runtime/RuntimeMeshResolve.hpp"
+#include "FDE/Core/Input.hpp"
 #include "FDE/Core/Log.hpp"
 #include "FDE/ImGui/ImGuiLayer.hpp"
 #include "FDE/Scene/Scene.hpp"
@@ -36,8 +37,9 @@ bool GlfwNavKeyDown(FDE::Window* window, int glfwKey)
 namespace FDE
 {
 
-RuntimeApplication::RuntimeApplication(std::string fprojectPath)
+RuntimeApplication::RuntimeApplication(std::string fprojectPath, std::string fdepackPath)
     : m_fprojectPath(std::move(fprojectPath))
+    , m_fdepackPath(std::move(fdepackPath))
 #if FDE_RUNTIME_DEBUG_DEFAULT
     , m_debugUIEnabled(true)
 #else
@@ -50,7 +52,7 @@ RuntimeApplication::RuntimeApplication(std::string fprojectPath)
         FDE_LOG_CLIENT_ERROR("RuntimeApplication: empty .fproject path");
         return;
     }
-    if (m_session.LoadFromFProjectFile(m_fprojectPath, err))
+    if (m_session.LoadFromFProjectFile(m_fprojectPath, err, m_fdepackPath))
     {
         m_loadOk = true;
         FDE_LOG_CLIENT_INFO("Runtime: loaded project '{}'", m_session.GetDescriptor().name);
@@ -73,6 +75,8 @@ WindowSpec RuntimeApplication::GetWindowSpec() const
 
 void RuntimeApplication::OnWindowCreated()
 {
+    Input::SetCurrentWindow(GetWindow());
+
     static std::string imguiIni = "imgui_runtime.ini";
     ImGui::GetIO().IniFilename = imguiIni.c_str();
 
@@ -109,10 +113,9 @@ void RuntimeApplication::OnUpdate()
     float dt = m_lastFrameTime > 0.0 ? static_cast<float>(now - m_lastFrameTime) : (1.0f / 60.0f);
     m_lastFrameTime = now;
 
-    int f3 = glfwGetKey(w, GLFW_KEY_F3);
-    if (f3 == GLFW_PRESS && !m_f3WasDown)
+    if (Input::IsKeyDown(GLFW_KEY_F3) && !m_f3WasDown)
         m_debugUIEnabled = !m_debugUIEnabled;
-    m_f3WasDown = (f3 == GLFW_PRESS);
+    m_f3WasDown = Input::IsKeyDown(GLFW_KEY_F3);
 
     if (AssetManager* am = m_session.GetAssetManager())
         am->ProcessAsyncUploads();
@@ -122,6 +125,7 @@ void RuntimeApplication::OnUpdate()
         return;
 
     ResolvePendingMeshes(world, m_session.GetAssetManager());
+    world->OnUpdate(dt);
 
     ImGuiIO& io = ImGui::GetIO();
     const bool blockGameMouse = m_debugUIEnabled && io.WantCaptureMouse;
@@ -183,17 +187,17 @@ void RuntimeApplication::OnUpdate()
         float fwd = 0.0f;
         float right = 0.0f;
         float up = 0.0f;
-        if (GlfwNavKeyDown(win, GLFW_KEY_W) || GlfwNavKeyDown(win, GLFW_KEY_UP))
+        if (Input::IsKeyDown(GLFW_KEY_W) || Input::IsKeyDown(GLFW_KEY_UP))
             fwd += 1.0f;
-        if (GlfwNavKeyDown(win, GLFW_KEY_S) || GlfwNavKeyDown(win, GLFW_KEY_DOWN))
+        if (Input::IsKeyDown(GLFW_KEY_S) || Input::IsKeyDown(GLFW_KEY_DOWN))
             fwd -= 1.0f;
-        if (GlfwNavKeyDown(win, GLFW_KEY_D) || GlfwNavKeyDown(win, GLFW_KEY_RIGHT))
+        if (Input::IsKeyDown(GLFW_KEY_D) || Input::IsKeyDown(GLFW_KEY_RIGHT))
             right -= 1.0f;
-        if (GlfwNavKeyDown(win, GLFW_KEY_A) || GlfwNavKeyDown(win, GLFW_KEY_LEFT))
+        if (Input::IsKeyDown(GLFW_KEY_A) || Input::IsKeyDown(GLFW_KEY_LEFT))
             right += 1.0f;
-        if (GlfwNavKeyDown(win, GLFW_KEY_Q))
+        if (Input::IsKeyDown(GLFW_KEY_Q))
             up += 1.0f;
-        if (GlfwNavKeyDown(win, GLFW_KEY_E))
+        if (Input::IsKeyDown(GLFW_KEY_E))
             up -= 1.0f;
         cam.ApplyFlyMovement(fwd, right, up, dt, navSens);
     }
@@ -225,7 +229,8 @@ void RuntimeApplication::OnRender()
     Scene* active = world->GetActiveScene();
     auto* scene3d = dynamic_cast<Scene3D*>(active);
     if (scene3d)
-        scene3d->Render(m_session.GetCamera(), static_cast<uint32_t>(fbw), static_cast<uint32_t>(fbh));
+        scene3d->Render(m_session.GetCamera(), static_cast<uint32_t>(fbw), static_cast<uint32_t>(fbh),
+                        m_session.GetAssetManager());
 }
 
 void RuntimeApplication::OnRunEnd()

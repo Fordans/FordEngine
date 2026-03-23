@@ -18,7 +18,7 @@ namespace FDE
 
 namespace
 {
-constexpr int CURRENT_SCHEMA_VERSION = 1;
+constexpr int CURRENT_SCHEMA_VERSION = 2;
 constexpr const char* KEY_NAME = "name";
 constexpr const char* KEY_VERSION = "version";
 constexpr const char* KEY_SCHEMA_VERSION = "schemaVersion";
@@ -41,6 +41,11 @@ constexpr const char* KEY_ROTATION = "rotation";
 constexpr const char* KEY_SCALE = "scale";
 constexpr const char* KEY_MESH = "mesh";
 constexpr const char* MESH_BUILTIN_TRIANGLE = "builtin:triangle";
+constexpr const char* KEY_SCENE_VIEW_CAMERA3D = "sceneViewCamera3D";
+constexpr const char* KEY_CAM_POS = "position";
+constexpr const char* KEY_CAM_YAW = "yaw";
+constexpr const char* KEY_CAM_PITCH = "pitch";
+constexpr const char* KEY_ALBEDO_TEXTURE = "albedoTexture";
 
 bool MeshAssetImpliesScene3D(std::string_view mesh)
 {
@@ -148,6 +153,32 @@ bool ProjectDescriptor::LoadFromFile(const std::string& fprojectPath, ProjectDes
         }
     }
 
+    auto itCam = obj.find(KEY_SCENE_VIEW_CAMERA3D);
+    if (itCam != obj.end() && itCam->second.is_object())
+    {
+        const auto& camObj = itCam->second.object_items();
+        auto itP = camObj.find(KEY_CAM_POS);
+        if (itP != camObj.end() && itP->second.is_array())
+        {
+            const auto& arr = itP->second.array_items();
+            if (arr.size() >= 3 && arr[0].is_number() && arr[1].is_number() && arr[2].is_number())
+            {
+                SceneViewCamera3DSnapshot snap;
+                snap.positionX = static_cast<float>(arr[0].number_value());
+                snap.positionY = static_cast<float>(arr[1].number_value());
+                snap.positionZ = static_cast<float>(arr[2].number_value());
+                auto itYaw = camObj.find(KEY_CAM_YAW);
+                if (itYaw != camObj.end() && itYaw->second.is_number())
+                    snap.yaw = static_cast<float>(itYaw->second.number_value());
+                auto itPitch = camObj.find(KEY_CAM_PITCH);
+                if (itPitch != camObj.end() && itPitch->second.is_number())
+                    snap.pitch = static_cast<float>(itPitch->second.number_value());
+                snap.hasValue = true;
+                outDescriptor.sceneViewCamera3D = snap;
+            }
+        }
+    }
+
     return true;
 }
 
@@ -173,11 +204,21 @@ bool ProjectDescriptor::SaveToDirectory(const std::string& projectRoot, std::str
     json11::Json::object obj;
     obj[KEY_NAME] = name;
     obj[KEY_VERSION] = version;
-    obj[KEY_SCHEMA_VERSION] = schemaVersion;
+    obj[KEY_SCHEMA_VERSION] = CURRENT_SCHEMA_VERSION;
 
     if (world)
     {
         obj[KEY_WORLD] = SerializeWorld(*world);
+    }
+
+    if (sceneViewCamera3D.hasValue)
+    {
+        json11::Json::object camObj;
+        camObj[KEY_CAM_POS] = json11::Json::array{sceneViewCamera3D.positionX, sceneViewCamera3D.positionY,
+                                                  sceneViewCamera3D.positionZ};
+        camObj[KEY_CAM_YAW] = sceneViewCamera3D.yaw;
+        camObj[KEY_CAM_PITCH] = sceneViewCamera3D.pitch;
+        obj[KEY_SCENE_VIEW_CAMERA3D] = json11::Json(std::move(camObj));
     }
 
     json11::Json json(std::move(obj));
@@ -279,6 +320,8 @@ static json11::Json SerializeWorld(const World& world)
                     meshVal = MESH_BUILTIN_CUBE;
                 if (!meshVal.empty())
                     objData[KEY_MESH] = meshVal;
+                if (!mesh3->albedoTextureAsset.empty())
+                    objData[KEY_ALBEDO_TEXTURE] = mesh3->albedoTextureAsset;
             }
 
             objectsArr.push_back(std::move(objData));
@@ -469,6 +512,9 @@ static bool DeserializeWorld(const json11::Json& json, World& world)
                     Mesh3DComponent meshComp;
                     meshComp.vertexArray = nullptr;
                     meshComp.meshAsset = meshVal;
+                    auto itAlb = objData.find(KEY_ALBEDO_TEXTURE);
+                    if (itAlb != objData.end() && itAlb->second.is_string())
+                        meshComp.albedoTextureAsset = itAlb->second.string_value();
                     scene->AddComponent<Mesh3DComponent>(entity, meshComp);
                 }
                 else

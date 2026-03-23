@@ -124,4 +124,10 @@ void World::SetActiveScene(Scene* scene)
     m_activeScene = nullptr;
 }
 
+void World::OnUpdate(float deltaTime)
+{
+    if (m_activeScene)
+        m_activeScene->OnUpdate(deltaTime);
+}
+
 } // namespace FDE

@@ -23,7 +23,9 @@ class FDE_API RuntimeSession
     RuntimeSession& operator=(const RuntimeSession&) = delete;
 
     /// Load `.fproject` and project root; initializes `AssetManager` for read-only runtime loads.
-    bool LoadFromFProjectFile(const std::string& absoluteFprojectPath, std::string& outError);
+    /// Optional \p optionalFdepackAbsolutePath activates pack overlay (player/CI builds).
+    bool LoadFromFProjectFile(const std::string& absoluteFprojectPath, std::string& outError,
+                              const std::string& optionalFdepackAbsolutePath = {});
     void Shutdown();
 
     World* GetWorld() { return m_world.get(); }

@@ -14,6 +14,9 @@
 #include "imgui.h"
 #include <memory>
 #include <optional>
+#include <string>
+#include <variant>
+#include <vector>
 
 namespace FDE
 {
@@ -60,10 +63,13 @@ class FDE_API EditorApplication : public Application
     void OnOpenProject();
     void OnSaveProject();
     void OnPlayInRuntime();
+    void OnUndo();
+    void OnRedo();
     void OnRegisterFileAssociation();
     void RefreshAssetPipeline();
     void OnRescanAssets();
     void OnBuildAssetPack();
+    void ProcessEditShortcuts();
 
   private:
     std::unique_ptr<EditorPreferences> m_preferences;
@@ -96,6 +102,56 @@ class FDE_API EditorApplication : public Application
     Scene3DGizmoState m_scene3DGizmoState;
     std::optional<ProjectDescriptor> m_projectDescriptor;
     std::unique_ptr<AssetManager> m_assetManager;
+
+    struct EditorTransform3DUndo
+    {
+        Object object;
+        Transform3DComponent before{};
+        Transform3DComponent after{};
+    };
+    struct EditorTransform2DUndo
+    {
+        Object object;
+        Transform2DComponent before{};
+        Transform2DComponent after{};
+    };
+    struct EditorTagNameUndo
+    {
+        Object object;
+        std::string before;
+        std::string after;
+    };
+    struct EditorMeshAlbedoUndo
+    {
+        Object object;
+        std::string before;
+        std::string after;
+    };
+
+    using EditorUndoEntry =
+        std::variant<EditorTransform3DUndo, EditorTransform2DUndo, EditorTagNameUndo, EditorMeshAlbedoUndo>;
+
+    void PushUndo(EditorUndoEntry entry);
+    void PushTransform3DUndo(const Object& obj, const Transform3DComponent& before,
+                             const Transform3DComponent& after);
+    void PushTransform2DUndo(const Object& obj, const Transform2DComponent& before,
+                             const Transform2DComponent& after);
+    void PushTagNameUndo(const Object& obj, std::string before, std::string after);
+    void PushMeshAlbedoUndo(const Object& obj, std::string before, std::string after);
+    bool UndoOne();
+    bool RedoOne();
+    void ApplyUndoEntryState(const EditorUndoEntry& entry, bool useBefore);
+    bool CanUndo() const { return !m_undoStack.empty(); }
+    bool CanRedo() const { return !m_redoStack.empty(); }
+
+    std::vector<EditorUndoEntry> m_undoStack;
+    std::vector<EditorUndoEntry> m_redoStack;
+    /// Baseline for Detail-panel transform drags (any axis).
+    Transform3DComponent m_detailTfWidgetBaseline{};
+    Transform2DComponent m_detailTf2WidgetBaseline{};
+    std::string m_detailTagNameBaseline;
+    std::string m_detailAlbedoBaseline;
+    bool m_sceneSimulationActive = false;
 };
 
 } // namespace FDE

@@ -8,6 +8,18 @@ namespace FDE
 
 class World;
 
+/// Optional 3D scene view / runtime fly camera pose persisted in `.fproject`.
+struct FDE_API SceneViewCamera3DSnapshot
+{
+    float positionX = 0.f;
+    float positionY = 4.f;
+    float positionZ = 12.f;
+    float yaw = 0.9f;
+    float pitch = 0.35f;
+    /// False when the key is absent (use engine defaults).
+    bool hasValue = false;
+};
+
 /// Project identifier file (.fproject) descriptor.
 /// .fproject must reside in the project root directory.
 /// Format: JSON with required fields and optional metadata.
@@ -19,7 +31,10 @@ struct FDE_API ProjectDescriptor
     /// Project version (semver-like, e.g. "1.0.0")
     std::string version;
     /// Schema version for format evolution (currently 1)
-    int schemaVersion = 1;
+    int schemaVersion = 2;
+
+    /// Editor scene view / suggested runtime camera (optional in JSON).
+    SceneViewCamera3DSnapshot sceneViewCamera3D;
 
     /// Load from a directory. Looks for .fproject in the given path.
     /// \param projectRoot Absolute path to project root (directory containing .fproject)

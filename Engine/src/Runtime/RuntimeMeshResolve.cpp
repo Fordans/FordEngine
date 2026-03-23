@@ -69,9 +69,9 @@ void ResolvePendingMeshes(World* world, AssetManager* assets)
         for (auto entity : view3d)
         {
             auto& mesh = view3d.get<Mesh3DComponent>(entity);
-            if (mesh.vertexArray && mesh.vertexArray->GetIndexCount() > 0)
-                continue;
-            resolve3d->ResolveMesh3D(mesh);
+            if (!mesh.vertexArray || mesh.vertexArray->GetIndexCount() == 0)
+                resolve3d->ResolveMesh3D(mesh);
+            resolve3d->ResolveMesh3DAlbedo(mesh);
         }
     }
 }

@@ -18,6 +18,7 @@ target_sources(FordEngine PRIVATE
     src/Asset/AssetLoadQueue.cpp
     src/Asset/MeshImporter.cpp
     src/Core/Application.cpp
+    src/Core/Input.cpp
     src/Scene/Object.cpp
     src/Scene/Scene.cpp
     src/Scene/Scene2D.cpp

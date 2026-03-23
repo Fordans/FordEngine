@@ -17,7 +17,8 @@ class FDE_API RuntimeApplication : public Application
 {
   public:
     /// \param fprojectPath Absolute or cwd-relative path to `.fproject`.
-    explicit RuntimeApplication(std::string fprojectPath);
+    /// \param fdepackPath Optional absolute path to `.fdepack` (runtime overlay).
+    explicit RuntimeApplication(std::string fprojectPath, std::string fdepackPath = {});
     ~RuntimeApplication() override;
 
     RuntimeApplication(const RuntimeApplication&) = delete;
@@ -38,6 +39,7 @@ class FDE_API RuntimeApplication : public Application
 
   private:
     std::string m_fprojectPath;
+    std::string m_fdepackPath;
     RuntimeSession m_session;
     bool m_loadOk = false;
     bool m_debugUIEnabled;

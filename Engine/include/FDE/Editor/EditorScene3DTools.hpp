@@ -2,6 +2,7 @@
 
 #include "FDE/Export.hpp"
 #include "FDE/Renderer/VertexArray.hpp"
+#include "FDE/Scene/Components.hpp"
 #include "FDE/Scene/Object.hpp"
 #include <entt.hpp>
 #include <glm/glm.hpp>
@@ -40,6 +41,12 @@ struct FDE_API Scene3DGizmoState
     glm::vec3 startRotation{0.f};
     glm::vec3 rotatePlaneNormal{0.f};
     glm::vec2 rotateStartDir{0.f}; // in plane basis
+
+    /// Full transform when gizmo drag started (for editor Undo).
+    Transform3DComponent transformBeforeGizmoDrag{};
+    bool hasTransformBeforeGizmoDrag = false;
+    /// Set when gizmo drag ends; editor consumes and calls PushTransform3DUndo.
+    bool gizmoDragReleasedUndoPending = false;
 };
 
 /// Screen-space ray vs Mesh3D + Transform3D entities (AABB pick using \p Mesh3DComponent local bounds).

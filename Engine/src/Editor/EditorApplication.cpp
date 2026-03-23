@@ -12,6 +12,7 @@
 #include "FDE/Asset/AssetDatabase.hpp"
 #include "FDE/Asset/AssetManager.hpp"
 #include "FDE/Core/FileSystem.hpp"
+#include "FDE/Core/Input.hpp"
 #include "FDE/Core/Log.hpp"
 #include "FDE/Window/Window.hpp"
 #include <glad/glad.h>
@@ -29,6 +30,7 @@
 #include <cstring>
 #include <filesystem>
 #include <vector>
+#include <variant>
 
 #if !defined(_WIN32)
 #include <sys/types.h>
@@ -228,6 +230,25 @@ FDE::Scene3D* CreateDefaultScene3D(FDE::World* world)
     return scene;
 }
 
+void ApplySceneViewCameraFromDescriptor(const FDE::ProjectDescriptor& desc, FDE::Camera3D& camera)
+{
+    if (!desc.sceneViewCamera3D.hasValue)
+        return;
+    const auto& c = desc.sceneViewCamera3D;
+    camera.SetPositionYawPitch(glm::vec3(c.positionX, c.positionY, c.positionZ), c.yaw, c.pitch);
+}
+
+void SyncSceneViewCameraToDescriptor(FDE::Camera3D& camera, FDE::ProjectDescriptor& desc)
+{
+    const glm::vec3 p = camera.GetPosition();
+    desc.sceneViewCamera3D.positionX = p.x;
+    desc.sceneViewCamera3D.positionY = p.y;
+    desc.sceneViewCamera3D.positionZ = p.z;
+    desc.sceneViewCamera3D.yaw = camera.GetYaw();
+    desc.sceneViewCamera3D.pitch = camera.GetPitch();
+    desc.sceneViewCamera3D.hasValue = true;
+}
+
 void ResolveMesh3DInScene(FDE::Scene* scene, FDE::AssetManager* assets)
 {
     if (!scene)
@@ -238,9 +259,9 @@ void ResolveMesh3DInScene(FDE::Scene* scene, FDE::AssetManager* assets)
     for (auto entity : reg.view<FDE::Mesh3DComponent>())
     {
         auto& mesh = reg.get<FDE::Mesh3DComponent>(entity);
-        if (mesh.vertexArray && mesh.vertexArray->GetIndexCount() > 0)
-            continue;
-        use->ResolveMesh3D(mesh);
+        if (!mesh.vertexArray || mesh.vertexArray->GetIndexCount() == 0)
+            use->ResolveMesh3D(mesh);
+        use->ResolveMesh3DAlbedo(mesh);
     }
 }
 
@@ -248,6 +269,156 @@ void ResolveMesh3DInScene(FDE::Scene* scene, FDE::AssetManager* assets)
 
 namespace FDE
 {
+
+namespace
+{
+bool Transform3DNearEqual(const Transform3DComponent& a, const Transform3DComponent& b)
+{
+    constexpr float e = 1e-4f;
+    auto near3 = [e](const glm::vec3& u, const glm::vec3& v) {
+        return glm::abs(u.x - v.x) <= e && glm::abs(u.y - v.y) <= e && glm::abs(u.z - v.z) <= e;
+    };
+    return near3(a.position, b.position) && near3(a.rotation, b.rotation) && near3(a.scale, b.scale);
+}
+
+bool Transform2DNearEqual(const Transform2DComponent& a, const Transform2DComponent& b)
+{
+    constexpr float e = 1e-4f;
+    return glm::abs(a.position.x - b.position.x) <= e && glm::abs(a.position.y - b.position.y) <= e
+        && glm::abs(a.rotation - b.rotation) <= e && glm::abs(a.scale.x - b.scale.x) <= e
+        && glm::abs(a.scale.y - b.scale.y) <= e;
+}
+} // namespace
+
+void EditorApplication::PushUndo(EditorUndoEntry entry)
+{
+    m_redoStack.clear();
+    m_undoStack.push_back(std::move(entry));
+    if (m_undoStack.size() > 128u)
+        m_undoStack.erase(m_undoStack.begin());
+}
+
+void EditorApplication::ApplyUndoEntryState(const EditorUndoEntry& entry, bool useBefore)
+{
+    std::visit(
+        [this, useBefore](const auto& cmd) {
+            using Cmd = std::decay_t<decltype(cmd)>;
+            if (!cmd.object.IsValid())
+                return;
+            Scene* sc = cmd.object.GetScene();
+            if (!sc)
+                return;
+
+            if constexpr (std::is_same_v<Cmd, EditorTransform3DUndo>)
+            {
+                Transform3DComponent* t = sc->GetComponent<Transform3DComponent>(cmd.object);
+                if (t)
+                    *t = useBefore ? cmd.before : cmd.after;
+            }
+            else if constexpr (std::is_same_v<Cmd, EditorTransform2DUndo>)
+            {
+                Transform2DComponent* t = sc->GetComponent<Transform2DComponent>(cmd.object);
+                if (t)
+                    *t = useBefore ? cmd.before : cmd.after;
+            }
+            else if constexpr (std::is_same_v<Cmd, EditorTagNameUndo>)
+            {
+                TagComponent* tag = sc->GetComponent<TagComponent>(cmd.object);
+                if (tag)
+                    tag->name = useBefore ? cmd.before : cmd.after;
+            }
+            else if constexpr (std::is_same_v<Cmd, EditorMeshAlbedoUndo>)
+            {
+                Mesh3DComponent* mesh = sc->GetComponent<Mesh3DComponent>(cmd.object);
+                if (mesh)
+                {
+                    mesh->albedoTextureAsset = useBefore ? cmd.before : cmd.after;
+                    mesh->albedoTexture.reset();
+                    if (m_assetManager)
+                        m_assetManager->ResolveMesh3DAlbedo(*mesh);
+                }
+            }
+        },
+        entry);
+}
+
+bool EditorApplication::UndoOne()
+{
+    if (m_undoStack.empty())
+        return false;
+    EditorUndoEntry e = std::move(m_undoStack.back());
+    m_undoStack.pop_back();
+    ApplyUndoEntryState(e, true);
+    m_redoStack.push_back(std::move(e));
+    return true;
+}
+
+bool EditorApplication::RedoOne()
+{
+    if (m_redoStack.empty())
+        return false;
+    EditorUndoEntry e = std::move(m_redoStack.back());
+    m_redoStack.pop_back();
+    ApplyUndoEntryState(e, false);
+    m_undoStack.push_back(std::move(e));
+    return true;
+}
+
+void EditorApplication::PushTransform3DUndo(const Object& obj, const Transform3DComponent& before,
+                                            const Transform3DComponent& after)
+{
+    if (!obj.IsValid() || Transform3DNearEqual(before, after))
+        return;
+    PushUndo(EditorTransform3DUndo{obj, before, after});
+}
+
+void EditorApplication::PushTransform2DUndo(const Object& obj, const Transform2DComponent& before,
+                                            const Transform2DComponent& after)
+{
+    if (!obj.IsValid() || Transform2DNearEqual(before, after))
+        return;
+    PushUndo(EditorTransform2DUndo{obj, before, after});
+}
+
+void EditorApplication::PushTagNameUndo(const Object& obj, std::string before, std::string after)
+{
+    if (!obj.IsValid() || before == after)
+        return;
+    PushUndo(EditorTagNameUndo{obj, std::move(before), std::move(after)});
+}
+
+void EditorApplication::PushMeshAlbedoUndo(const Object& obj, std::string before, std::string after)
+{
+    if (!obj.IsValid() || before == after)
+        return;
+    PushUndo(EditorMeshAlbedoUndo{obj, std::move(before), std::move(after)});
+}
+
+void EditorApplication::OnUndo()
+{
+    UndoOne();
+}
+
+void EditorApplication::OnRedo()
+{
+    RedoOne();
+}
+
+void EditorApplication::ProcessEditShortcuts()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantTextInput)
+        return;
+
+    const bool mod = io.ConfigMacOSXBehaviors ? io.KeySuper : io.KeyCtrl;
+    if (!mod)
+        return;
+
+    if (ImGui::IsKeyPressed(ImGuiKey_Z, false) && !io.KeyShift)
+        OnUndo();
+    else if (ImGui::IsKeyPressed(ImGuiKey_Y, false))
+        OnRedo();
+}
 
 EditorApplication::EditorApplication(const std::string& initialProjectPath)
     : m_preferences(std::make_unique<EditorPreferences>())
@@ -276,6 +447,7 @@ EditorApplication::EditorApplication(const std::string& initialProjectPath)
             {
                 FileSystem::SetProjectRoot(projectRoot);
                 m_projectDescriptor = desc;
+                ApplySceneViewCameraFromDescriptor(desc, m_sceneCamera3D);
                 m_preferences->SetLastProjectPath(projectRoot);
                 m_contentViewCurrentPath.clear();
                 SyncEditorActiveScenes();
@@ -612,6 +784,8 @@ void EditorApplication::SyncEditorActiveScenes()
 
 void EditorApplication::OnWindowCreated()
 {
+    Input::SetCurrentWindow(GetWindow());
+
     GetLayerStack().PushOverlay(std::make_unique<ImGuiLayer>());
     EditorConsole::Initialize();
 
@@ -681,9 +855,12 @@ void EditorApplication::OnUpdate()
 {
     if (m_assetManager)
         m_assetManager->ProcessAsyncUploads();
+    if (m_world && m_sceneSimulationActive)
+        m_world->OnUpdate(ImGui::GetIO().DeltaTime);
     if (!m_showScene && m_sceneViewMouseCaptured)
         ReleaseSceneViewMouseCapture();
     RenderMainUI();
+    ProcessEditShortcuts();
     // Title bar drag: exclude right button area
     if (Window* w = GetWindow(); w)
         w->ProcessTitleBarDrag(TITLE_BAR_HEIGHT, TITLE_BAR_BUTTON_AREA_WIDTH);
@@ -756,6 +933,10 @@ void EditorApplication::RenderMainUI()
         }
         if (ImGui::BeginMenu("Edit"))
         {
+            if (ImGui::MenuItem("Undo", "Ctrl+Z", false, CanUndo()))
+                OnUndo();
+            if (ImGui::MenuItem("Redo", "Ctrl+Y", false, CanRedo()))
+                OnRedo();
             ImGui::Separator();
             if (ImGui::MenuItem("Preferences...")) { m_showPreferences = true; }
             ImGui::EndMenu();
@@ -899,7 +1080,7 @@ void EditorApplication::OnNewProject()
     ProjectDescriptor desc;
     desc.name = name;
     desc.version = "1.0.0";
-    desc.schemaVersion = 1;
+    desc.schemaVersion = 2;
 
     std::string err;
     if (!desc.SaveToDirectory(projectRoot, err))
@@ -960,6 +1141,7 @@ void EditorApplication::OnOpenProject()
 
     FileSystem::SetProjectRoot(selected);
     m_projectDescriptor = desc;
+    ApplySceneViewCameraFromDescriptor(desc, m_sceneCamera3D);
     m_preferences->SetLastProjectPath(selected);
     m_contentViewCurrentPath.clear();
     RefreshAssetPipeline();
@@ -979,6 +1161,8 @@ void EditorApplication::OnSaveProject()
 {
     if (!FileSystem::HasProject() || !m_projectDescriptor)
         return;
+
+    SyncSceneViewCameraToDescriptor(m_sceneCamera3D, *m_projectDescriptor);
 
     std::string root = FileSystem::GetProjectRoot();
     std::string err;
@@ -1274,6 +1458,13 @@ void EditorApplication::RenderDetailView(ImGuiID dockspace_id)
                 buf[255] = '\0';
                 if (ImGui::InputText("Name", buf, sizeof(buf)))
                     tag->name = buf;
+                if (ImGui::IsItemActivated())
+                    m_detailTagNameBaseline = tag->name;
+                if (ImGui::IsItemDeactivatedAfterEdit())
+                {
+                    if (tag->name != m_detailTagNameBaseline)
+                        PushTagNameUndo(m_selectedObject, m_detailTagNameBaseline, tag->name);
+                }
             }
         }
 
@@ -1283,8 +1474,34 @@ void EditorApplication::RenderDetailView(ImGuiID dockspace_id)
             if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
             {
                 ImGui::DragFloat2("Position", &transform->position.x, 0.05f);
+                if (ImGui::IsItemActivated())
+                    m_detailTf2WidgetBaseline = *transform;
+                if (ImGui::IsItemDeactivatedAfterEdit())
+                {
+                    if (!Transform2DNearEqual(*transform, m_detailTf2WidgetBaseline))
+                        PushTransform2DUndo(m_selectedObject, m_detailTf2WidgetBaseline, *transform);
+                    m_detailTf2WidgetBaseline = *transform;
+                }
+
                 ImGui::DragFloat("Rotation", &transform->rotation, 0.01f, -3.14159f, 3.14159f, "%.3f rad");
+                if (ImGui::IsItemActivated())
+                    m_detailTf2WidgetBaseline = *transform;
+                if (ImGui::IsItemDeactivatedAfterEdit())
+                {
+                    if (!Transform2DNearEqual(*transform, m_detailTf2WidgetBaseline))
+                        PushTransform2DUndo(m_selectedObject, m_detailTf2WidgetBaseline, *transform);
+                    m_detailTf2WidgetBaseline = *transform;
+                }
+
                 ImGui::DragFloat2("Scale", &transform->scale.x, 0.05f, 0.001f, 1000.0f);
+                if (ImGui::IsItemActivated())
+                    m_detailTf2WidgetBaseline = *transform;
+                if (ImGui::IsItemDeactivatedAfterEdit())
+                {
+                    if (!Transform2DNearEqual(*transform, m_detailTf2WidgetBaseline))
+                        PushTransform2DUndo(m_selectedObject, m_detailTf2WidgetBaseline, *transform);
+                    m_detailTf2WidgetBaseline = *transform;
+                }
             }
         }
 
@@ -1302,16 +1519,60 @@ void EditorApplication::RenderDetailView(ImGuiID dockspace_id)
             if (ImGui::CollapsingHeader("Transform 3D", ImGuiTreeNodeFlags_DefaultOpen))
             {
                 ImGui::DragFloat3("Position", &transform->position.x, 0.05f);
+                if (ImGui::IsItemActivated())
+                    m_detailTfWidgetBaseline = *transform;
+                if (ImGui::IsItemDeactivatedAfterEdit())
+                {
+                    if (!Transform3DNearEqual(*transform, m_detailTfWidgetBaseline))
+                        PushTransform3DUndo(m_selectedObject, m_detailTfWidgetBaseline, *transform);
+                    m_detailTfWidgetBaseline = *transform;
+                }
+
                 ImGui::DragFloat3("Rotation (rad)", &transform->rotation.x, 0.01f);
+                if (ImGui::IsItemActivated())
+                    m_detailTfWidgetBaseline = *transform;
+                if (ImGui::IsItemDeactivatedAfterEdit())
+                {
+                    if (!Transform3DNearEqual(*transform, m_detailTfWidgetBaseline))
+                        PushTransform3DUndo(m_selectedObject, m_detailTfWidgetBaseline, *transform);
+                    m_detailTfWidgetBaseline = *transform;
+                }
+
                 ImGui::DragFloat3("Scale", &transform->scale.x, 0.05f, 0.001f, 1000.0f);
+                if (ImGui::IsItemActivated())
+                    m_detailTfWidgetBaseline = *transform;
+                if (ImGui::IsItemDeactivatedAfterEdit())
+                {
+                    if (!Transform3DNearEqual(*transform, m_detailTfWidgetBaseline))
+                        PushTransform3DUndo(m_selectedObject, m_detailTfWidgetBaseline, *transform);
+                    m_detailTfWidgetBaseline = *transform;
+                }
             }
         }
 
-        if (scene->HasComponent<Mesh3DComponent>(m_selectedObject))
+        if (auto* mesh3 = scene->GetComponent<Mesh3DComponent>(m_selectedObject))
         {
             if (ImGui::CollapsingHeader("Mesh3D"))
             {
-                ImGui::TextDisabled("(Mesh component - no editable properties)");
+                ImGui::TextUnformatted("Mesh asset");
+                ImGui::TextWrapped("%s", mesh3->meshAsset.c_str());
+                char alb[512]{};
+                std::strncpy(alb, mesh3->albedoTextureAsset.c_str(), sizeof(alb) - 1);
+                alb[sizeof(alb) - 1] = '\0';
+                if (ImGui::InputText("Albedo texture", alb, sizeof(alb)))
+                {
+                    mesh3->albedoTextureAsset = alb;
+                    mesh3->albedoTexture.reset();
+                }
+                if (ImGui::IsItemActivated())
+                    m_detailAlbedoBaseline = mesh3->albedoTextureAsset;
+                if (ImGui::IsItemDeactivatedAfterEdit())
+                {
+                    if (mesh3->albedoTextureAsset != m_detailAlbedoBaseline)
+                        PushMeshAlbedoUndo(m_selectedObject, m_detailAlbedoBaseline, mesh3->albedoTextureAsset);
+                }
+                if (m_assetManager)
+                    m_assetManager->ResolveMesh3DAlbedo(*mesh3);
             }
         }
     }
@@ -1553,6 +1814,8 @@ void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
         ImGui::Spacing();
         if (SceneViewToolbarPlayButton(FileSystem::HasProject()))
             OnPlayInRuntime();
+        ImGui::SameLine();
+        ImGui::Checkbox("Simulate", &m_sceneSimulationActive);
 
         ImVec2 viewportSize = ImGui::GetContentRegionAvail();
         if (viewportSize.x > 0 && viewportSize.y > 0)
@@ -1585,6 +1848,18 @@ void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
                     Scene3D_UpdateGizmoInteraction(tfMode, *activeForDraw, m_selectedObject, m_sceneCamera3D,
                                                    width, height, m_sceneViewLastImageMin, m_sceneViewLastImageMax,
                                                    m_scene3DGizmoState, gizmoInteract);
+                    if (m_scene3DGizmoState.gizmoDragReleasedUndoPending)
+                    {
+                        if (m_selectedObject.IsValid() && activeForDraw->IsValid(m_selectedObject)
+                            && activeForDraw->HasComponent<Transform3DComponent>(m_selectedObject))
+                        {
+                            if (auto* trUndo =
+                                    activeForDraw->GetComponent<Transform3DComponent>(m_selectedObject))
+                                PushTransform3DUndo(m_selectedObject,
+                                                      m_scene3DGizmoState.transformBeforeGizmoDrag, *trUndo);
+                        }
+                        m_scene3DGizmoState.gizmoDragReleasedUndoPending = false;
+                    }
                 }
 
                 m_sceneViewport->Bind();
@@ -1599,8 +1874,8 @@ void EditorApplication::RenderSceneView(ImGuiID dockspace_id)
                     if (showGrid)
                         DrawEditorSceneGrid3D(m_sceneCamera3D, width, height, gridSize);
                     ResolveMesh3DInScene(activeForDraw, m_assetManager.get());
-                    glDisable(GL_CULL_FACE);
-                    Scene3D::RenderMesh3DEntities(*activeForDraw, m_sceneCamera3D, width, height);
+                    Scene3D::RenderMesh3DEntities(*activeForDraw, m_sceneCamera3D, width, height,
+                                                  m_assetManager.get());
 
                     const glm::mat4 viewMat = m_sceneCamera3D.GetViewMatrix();
                     const glm::mat4 projMat = m_sceneCamera3D.GetProjectionMatrix(width, height);

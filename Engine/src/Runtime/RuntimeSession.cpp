@@ -71,7 +71,8 @@ RuntimeSession::~RuntimeSession()
     Shutdown();
 }
 
-bool RuntimeSession::LoadFromFProjectFile(const std::string& absoluteFprojectPath, std::string& outError)
+bool RuntimeSession::LoadFromFProjectFile(const std::string& absoluteFprojectPath, std::string& outError,
+                                          const std::string& optionalFdepackAbsolutePath)
 {
     Shutdown();
 
@@ -94,10 +95,18 @@ bool RuntimeSession::LoadFromFProjectFile(const std::string& absoluteFprojectPat
     FileSystem::SetProjectRoot(projectRoot);
     m_assets = std::make_unique<AssetManager>();
     m_assets->Initialize(projectRoot);
+    if (!optionalFdepackAbsolutePath.empty())
+        m_assets->SetActivePack(optionalFdepackAbsolutePath);
 
     m_scene3DNavSensitivity = ReadScene3DNavSensitivityFromFordEditorCfg(projectRoot);
 
-    m_camera.SetPosition(glm::vec3(0.0f, 4.0f, 12.0f));
+    if (m_descriptor.sceneViewCamera3D.hasValue)
+    {
+        const auto& c = m_descriptor.sceneViewCamera3D;
+        m_camera.SetPositionYawPitch(glm::vec3(c.positionX, c.positionY, c.positionZ), c.yaw, c.pitch);
+    }
+    else
+        m_camera.SetPositionYawPitch(glm::vec3(0.0f, 4.0f, 12.0f), 0.9f, 0.35f);
     return true;
 }
 

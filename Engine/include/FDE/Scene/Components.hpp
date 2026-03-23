@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FDE/Export.hpp"
+#include "FDE/Asset/Texture2DResource.hpp"
 #include "FDE/Renderer/VertexArray.hpp"
 #include <glm/glm.hpp>
 #include <memory>
@@ -48,6 +49,9 @@ struct FDE_API Mesh3DComponent
 {
     std::shared_ptr<VertexArray> vertexArray;
     std::string meshAsset;
+    /// Optional albedo: guid / `Assets/...` path (resolved via AssetManager).
+    std::string albedoTextureAsset;
+    std::shared_ptr<Texture2DResource> albedoTexture;
     glm::vec3 localBoundsMin{-0.5f, -0.5f, -0.5f};
     glm::vec3 localBoundsMax{0.5f, 0.5f, 0.5f};
 };

@@ -37,6 +37,9 @@ class FDE_API Scene
     const std::string& GetName() const { return m_name; }
     void SetName(const std::string& name) { m_name = name; }
 
+    /// Per-frame simulation (gameplay). Editor may skip when paused.
+    virtual void OnUpdate(float /*deltaTime*/) {}
+
     // --- Component helpers (convenience over registry.emplace/get) ---
 
     template<typename T, typename... Args>

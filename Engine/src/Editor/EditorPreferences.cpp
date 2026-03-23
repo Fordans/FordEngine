@@ -21,6 +21,7 @@ constexpr const char* KEY_HEIGHT = "Height";
 constexpr const char* KEY_MAXIMIZED = "Maximized";
 constexpr const char* FILTER_PROJECT = "Project";
 constexpr const char* KEY_LAST_PROJECT_PATH = "LastProjectPath";
+constexpr const char* KEY_STARTUP_LOAD_LAST_PROJECT = "StartupLoadLastProject";
 constexpr const char* FILTER_CONTENT = "Content";
 constexpr const char* KEY_CONTENT_ICON_SIZE = "IconSize";
 constexpr int DEFAULT_CONTENT_ICON_SIZE = 48;
@@ -109,6 +110,23 @@ std::string EditorPreferences::GetLastProjectPath() const
 void EditorPreferences::SetLastProjectPath(const std::string& path)
 {
     m_impl->config.setConfig(FILTER_PROJECT, KEY_LAST_PROJECT_PATH, path);
+}
+
+bool EditorPreferences::GetStartupLoadLastProject() const
+{
+    try
+    {
+        return m_impl->config.getConfig<bool>(FILTER_PROJECT, KEY_STARTUP_LOAD_LAST_PROJECT);
+    }
+    catch (const std::exception&)
+    {
+        return false;
+    }
+}
+
+void EditorPreferences::SetStartupLoadLastProject(bool loadLast)
+{
+    m_impl->config.setConfig(FILTER_PROJECT, KEY_STARTUP_LOAD_LAST_PROJECT, loadLast);
 }
 
 int EditorPreferences::GetContentIconSize() const

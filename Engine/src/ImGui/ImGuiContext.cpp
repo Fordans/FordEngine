@@ -27,7 +27,7 @@ bool ImGuiContext::Init(GLFWwindow* window)
 
     ImGui::StyleColorsDark();
 
-    // 锐利风格：去除所有圆角
+    // Sharp style: no rounding
     ImGuiStyle& style = ImGui::GetStyle();
     style.WindowRounding = 0.0f;
     style.ChildRounding = 0.0f;
@@ -37,30 +37,30 @@ bool ImGuiContext::Init(GLFWwindow* window)
     style.GrabRounding = 0.0f;
     style.TabRounding = 0.0f;
 
-    // 金属感浮雕：边框高光 + 阴影，加粗窗口边缘描边便于区分
+    // Metallic bevel: border highlight + shadow
     style.WindowBorderSize = 2.0f;
     style.ChildBorderSize = 2.0f;
     style.PopupBorderSize = 2.0f;
     style.FrameBorderSize = 1.0f;
     style.TabBorderSize = 1.0f;
 
-    // 暗色主题 + 金属感暗色装饰 + 专业风格
+    // Dark theme, metallic accents
     ImVec4* colors = style.Colors;
-    colors[ImGuiCol_Border] = ImVec4(0.48f, 0.48f, 0.50f, 0.80f);       // 金属高光边（银灰）
-    colors[ImGuiCol_BorderShadow] = ImVec4(0.02f, 0.02f, 0.02f, 0.70f); // 浮雕阴影
+    colors[ImGuiCol_Border] = ImVec4(0.48f, 0.48f, 0.50f, 0.80f);
+    colors[ImGuiCol_BorderShadow] = ImVec4(0.02f, 0.02f, 0.02f, 0.70f);
     colors[ImGuiCol_Separator] = ImVec4(0.42f, 0.42f, 0.44f, 0.60f);
-    colors[ImGuiCol_WindowBg] = ImVec4(0.10f, 0.10f, 0.10f, 0.96f);    // 窗口金属底
+    colors[ImGuiCol_WindowBg] = ImVec4(0.10f, 0.10f, 0.10f, 0.96f);
     colors[ImGuiCol_ChildBg] = ImVec4(0.08f, 0.08f, 0.08f, 0.80f);
     colors[ImGuiCol_PopupBg] = ImVec4(0.12f, 0.12f, 0.12f, 0.96f);
-    colors[ImGuiCol_FrameBg] = ImVec4(0.20f, 0.20f, 0.22f, 0.75f);       // 金属基底
-    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.30f, 0.30f, 0.32f, 0.85f); // 悬停反光
-    colors[ImGuiCol_FrameBgActive] = ImVec4(0.16f, 0.16f, 0.18f, 0.90f);  // 按下凹陷
-    colors[ImGuiCol_TitleBgActive] = ImVec4(0.22f, 0.22f, 0.24f, 1.00f);  // 金属暗色
-    colors[ImGuiCol_CheckMark] = ImVec4(0.72f, 0.72f, 0.76f, 1.00f);     // 银灰高光
-    colors[ImGuiCol_SliderGrab] = ImVec4(0.44f, 0.44f, 0.48f, 1.00f);    // 金属抓取
+    colors[ImGuiCol_FrameBg] = ImVec4(0.20f, 0.20f, 0.22f, 0.75f);
+    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.30f, 0.30f, 0.32f, 0.85f);
+    colors[ImGuiCol_FrameBgActive] = ImVec4(0.16f, 0.16f, 0.18f, 0.90f);
+    colors[ImGuiCol_TitleBgActive] = ImVec4(0.22f, 0.22f, 0.24f, 1.00f);
+    colors[ImGuiCol_CheckMark] = ImVec4(0.72f, 0.72f, 0.76f, 1.00f);
+    colors[ImGuiCol_SliderGrab] = ImVec4(0.44f, 0.44f, 0.48f, 1.00f);
     colors[ImGuiCol_SliderGrabActive] = ImVec4(0.54f, 0.54f, 0.58f, 1.00f);
-    colors[ImGuiCol_Button] = ImVec4(0.28f, 0.28f, 0.30f, 0.50f);        // 枪灰
-    colors[ImGuiCol_ButtonHovered] = ImVec4(0.38f, 0.38f, 0.40f, 1.00f); // 悬停金属
+    colors[ImGuiCol_Button] = ImVec4(0.28f, 0.28f, 0.30f, 0.50f);
+    colors[ImGuiCol_ButtonHovered] = ImVec4(0.38f, 0.38f, 0.40f, 1.00f);
     colors[ImGuiCol_ButtonActive] = ImVec4(0.32f, 0.32f, 0.34f, 1.00f);
     colors[ImGuiCol_Header] = ImVec4(0.28f, 0.28f, 0.30f, 0.40f);
     colors[ImGuiCol_HeaderHovered] = ImVec4(0.38f, 0.38f, 0.40f, 0.80f);
@@ -84,23 +84,19 @@ bool ImGuiContext::Init(GLFWwindow* window)
     colors[ImGuiCol_TableBorderStrong] = ImVec4(0.45f, 0.43f, 0.43f, 1.00f);
     colors[ImGuiCol_TableBorderLight] = ImVec4(0.30f, 0.28f, 0.28f, 1.00f);
 
-    // 整体放大控件
+    // Scale up widgets
     style.ScaleAllSizes(1.35f);
 
-    // 自定义字体：Angel wish.ttf
+    // Custom font: Angel wish.ttf (Latin/default glyph range only — smaller atlas than full CJK)
     std::string fontPath = FileSystem::ResolveEngineResource("Angel wish.ttf");
     if (!fontPath.empty())
     {
+        const ImWchar* ranges = io.Fonts->GetGlyphRangesDefault();
         io.Fonts->Clear();
-        ImFont* font = io.Fonts->AddFontFromFileTTF(
-            fontPath.c_str(), 36.0f, nullptr,
-            io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
+        ImFont* font = io.Fonts->AddFontFromFileTTF(fontPath.c_str(), 36.0f, nullptr, ranges);
         if (!font)
-            io.Fonts->AddFontDefault(); // 加载失败时回退到默认字体
-        // 标题栏用大号字体
-        m_titleFont = io.Fonts->AddFontFromFileTTF(
-            fontPath.c_str(), 48.0f, nullptr,
-            io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
+            font = io.Fonts->AddFontDefault();
+        m_titleFont = io.Fonts->AddFontFromFileTTF(fontPath.c_str(), 48.0f, nullptr, ranges);
         if (!m_titleFont)
             m_titleFont = font;
     }

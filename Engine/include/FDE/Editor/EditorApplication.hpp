@@ -47,6 +47,8 @@ class FDE_API EditorApplication : public Application
     void RenderMainUI();
     void RenderTitleBar();
     void RenderPreferencesWindow(ImGuiID dockspace_id);
+    void RenderStartWizard(ImGuiID dockspace_id);
+    void RenderNewProjectTemplateModal();
     void RenderSceneView(ImGuiID dockspace_id);
     void RenderSceneTreeView(ImGuiID dockspace_id);
     void RenderDetailView(ImGuiID dockspace_id);
@@ -61,6 +63,9 @@ class FDE_API EditorApplication : public Application
 
     void OnNewProject();
     void OnOpenProject();
+    /// \return true if project root was loaded (valid .fproject and world deserialized).
+    bool LoadOpenedProject(const std::string& projectRoot);
+    void RunNewProjectWithTemplate(bool create3DScene);
     void OnSaveProject();
     void OnPlayInRuntime();
     void OnUndo();
@@ -74,6 +79,8 @@ class FDE_API EditorApplication : public Application
   private:
     std::unique_ptr<EditorPreferences> m_preferences;
     bool m_showPreferences = false;
+    bool m_showStartWizard = false;
+    bool m_requestNewProjectTemplateModal = false;
     bool m_showScene = true;
     bool m_showSceneTree = true;
     bool m_showDetail = true;

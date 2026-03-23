@@ -29,6 +29,10 @@ class FDE_API EditorPreferences
     std::string GetLastProjectPath() const;
     void SetLastProjectPath(const std::string& path);
 
+    /// false = show start wizard on launch (default); true = try to open last project folder.
+    bool GetStartupLoadLastProject() const;
+    void SetStartupLoadLastProject(bool loadLast);
+
     // Content View
     int GetContentIconSize() const;
     void SetContentIconSize(int size);

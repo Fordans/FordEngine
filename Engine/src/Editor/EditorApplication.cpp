@@ -8,6 +8,7 @@
 #include "FDE/Runtime/RuntimeMeshResolve.hpp"
 #include "FDE/Scene/Components.hpp"
 #include "FDE/Scene/Object.hpp"
+#include "FDE/Scene/Scene2D.hpp"
 #include "FDE/Scene/Scene3D.hpp"
 #include "FDE/Asset/AssetDatabase.hpp"
 #include "FDE/Asset/AssetManager.hpp"
@@ -188,6 +189,23 @@ void DrawEditorSceneGrid3D(const FDE::Camera3D& camera, uint32_t viewportWidth, 
 
     glBindVertexArray(0);
     FDE::Renderer::UseDefaultShader();
+}
+
+FDE::Scene2D* CreateDefaultScene2D(FDE::World* world)
+{
+    if (!world)
+        return nullptr;
+    FDE::Scene2D* scene = world->CreateScene2D("Default");
+    if (!scene)
+        return nullptr;
+    world->SetActiveScene(scene);
+    FDE::Object triObj = scene->CreateObject();
+    scene->AddComponent<FDE::TagComponent>(triObj, "Triangle");
+    scene->AddComponent<FDE::Transform2DComponent>(triObj);
+    FDE::Mesh2DComponent mesh2d;
+    mesh2d.meshAsset = "builtin:triangle";
+    scene->AddComponent<FDE::Mesh2DComponent>(triObj, mesh2d);
+    return scene;
 }
 
 FDE::Scene3D* CreateDefaultScene3D(FDE::World* world)
@@ -445,34 +463,31 @@ EditorApplication::EditorApplication(const std::string& initialProjectPath)
     if (!initialProjectPath.empty())
     {
         std::string projectRoot = std::filesystem::path(initialProjectPath).parent_path().string();
-        if (ProjectDescriptor::IsProjectDirectory(projectRoot))
+        if (LoadOpenedProject(projectRoot))
         {
-            m_world = std::make_unique<World>();
-            ProjectDescriptor desc;
-            std::string err;
-            if (ProjectDescriptor::LoadFromDirectory(projectRoot, desc, err, m_world.get()))
-            {
-                FileSystem::SetProjectRoot(projectRoot);
-                m_projectDescriptor = desc;
-                ApplySceneViewCameraFromDescriptor(desc, m_sceneCamera3D);
-                m_preferences->SetLastProjectPath(projectRoot);
-                m_contentViewCurrentPath.clear();
-                SyncEditorActiveScenes();
-                RefreshAssetPipeline();
-                // Defer mesh GPU resolve to OnWindowCreated — OpenGL not ready in constructor
-                FDE_LOG_CLIENT_INFO("Opened project from file: {} ({})", desc.name, projectRoot);
-            }
-            else
-            {
-                m_world.reset();
-                FDE_LOG_CLIENT_ERROR("Failed to load project: {}", err);
-            }
+            FDE_LOG_CLIENT_INFO("Opened project from file: {} ({})", m_projectDescriptor->name, projectRoot);
         }
         else
         {
-            FDE_LOG_CLIENT_ERROR("Not a valid project: {}", initialProjectPath);
+            FDE_LOG_CLIENT_ERROR("Not a valid project or failed to load: {}", initialProjectPath);
+            m_showStartWizard = true;
         }
     }
+    else if (m_preferences->GetStartupLoadLastProject())
+    {
+        std::string last = m_preferences->GetLastProjectPath();
+        if (!last.empty() && ProjectDescriptor::IsProjectDirectory(last))
+        {
+            if (LoadOpenedProject(last))
+                FDE_LOG_CLIENT_INFO("Opened last project: {} ({})", m_projectDescriptor->name, last);
+            else
+                m_showStartWizard = true;
+        }
+        else
+            m_showStartWizard = true;
+    }
+    else
+        m_showStartWizard = true;
 }
 
 namespace
@@ -798,9 +813,12 @@ void EditorApplication::OnWindowCreated()
 
     if (!m_world)
     {
-        m_world = std::make_unique<World>();
-        CreateDefaultScene3D(m_world.get());
-        SyncEditorActiveScenes();
+        if (!m_showStartWizard)
+        {
+            m_world = std::make_unique<World>();
+            CreateDefaultScene3D(m_world.get());
+            SyncEditorActiveScenes();
+        }
     }
     else
     {
@@ -877,10 +895,10 @@ void EditorApplication::RenderMainUI()
 {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
 
-    // 自定义标题栏（置顶先绘制）
+    // Custom title bar (drawn first)
     RenderTitleBar();
 
-    // 主内容区：位于标题栏下方
+    // Main content below title bar
     ImVec2 mainPos = ImVec2(viewport->WorkPos.x, viewport->WorkPos.y + TITLE_BAR_HEIGHT);
     ImVec2 mainSize = ImVec2(viewport->WorkSize.x, viewport->WorkSize.y - TITLE_BAR_HEIGHT);
 
@@ -897,28 +915,41 @@ void EditorApplication::RenderMainUI()
     ImGui::Begin("MainWindow", nullptr, window_flags);
     ImGui::PopStyleVar(2);
 
-    ImGuiID dockspace_id = ImGui::GetID("MainDockspace");
-    ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
+    if (m_requestNewProjectTemplateModal)
+    {
+        ImGui::OpenPopup("NewProjectTemplate");
+        m_requestNewProjectTemplateModal = false;
+    }
 
-    if (m_showScene)
-        RenderSceneView(dockspace_id);
-    if (m_showSceneTree)
-        RenderSceneTreeView(dockspace_id);
-    if (m_showDetail)
-        RenderDetailView(dockspace_id);
+    ImGuiID dockspace_id = ImGui::GetID("MainDockspace");
+    if (m_showStartWizard)
+        RenderStartWizard(dockspace_id);
+    else
+    {
+        ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
+
+        if (m_showScene)
+            RenderSceneView(dockspace_id);
+        if (m_showSceneTree)
+            RenderSceneTreeView(dockspace_id);
+        if (m_showDetail)
+            RenderDetailView(dockspace_id);
+        if (m_showContentView)
+            RenderContentView(dockspace_id);
+    }
     if (m_showPreferences)
         RenderPreferencesWindow(dockspace_id);
     if (m_showConsole)
         EditorConsole::Render(dockspace_id);
-    if (m_showContentView)
-        RenderContentView(dockspace_id);
+
+    RenderNewProjectTemplateModal();
 
     if (ImGui::BeginMenuBar())
     {
         if (ImGui::BeginMenu("File"))
         {
             if (ImGui::MenuItem("New Project"))
-                OnNewProject();
+                m_requestNewProjectTemplateModal = true;
             if (ImGui::MenuItem("Open Project"))
                 OnOpenProject();
             if (ImGui::MenuItem("Save Project", nullptr, false, FileSystem::HasProject()))
@@ -1016,7 +1047,7 @@ void EditorApplication::RenderTitleBar()
     Window* w = GetWindow();
     if (w)
     {
-        // 默认无背景，仅悬停/点击时显示；无描边
+        // No background until hover/press; no border
         ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
 
         ImVec4 btnIdle = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -1043,7 +1074,7 @@ void EditorApplication::RenderTitleBar()
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button, btnIdle);
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.42f, 0.38f, 0.40f, 0.9f));  // 金属暗色
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.42f, 0.38f, 0.40f, 0.9f));
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.48f, 0.44f, 0.46f, 1.0f));
         if (ImGui::Button("X", ImVec2(TITLE_BAR_BUTTON_WIDTH, -1)))
             w->RequestClose();
@@ -1056,6 +1087,42 @@ void EditorApplication::RenderTitleBar()
 }
 
 void EditorApplication::OnNewProject()
+{
+    m_requestNewProjectTemplateModal = true;
+}
+
+bool EditorApplication::LoadOpenedProject(const std::string& projectRoot)
+{
+    if (!ProjectDescriptor::IsProjectDirectory(projectRoot))
+        return false;
+    m_world = std::make_unique<World>();
+    ProjectDescriptor desc;
+    std::string err;
+    if (!ProjectDescriptor::LoadFromDirectory(projectRoot, desc, err, m_world.get()))
+    {
+        m_world.reset();
+        FDE_LOG_CLIENT_ERROR("Failed to load project: {}", err);
+        return false;
+    }
+    FileSystem::SetProjectRoot(projectRoot);
+    m_projectDescriptor = desc;
+    ApplySceneViewCameraFromDescriptor(desc, m_sceneCamera3D);
+    m_preferences->SetLastProjectPath(projectRoot);
+    m_contentViewCurrentPath.clear();
+    SyncEditorActiveScenes();
+    RefreshAssetPipeline();
+    if (!m_scene2D && !m_scene3D && m_world->GetSceneNames().empty())
+    {
+        CreateDefaultScene3D(m_world.get());
+        SyncEditorActiveScenes();
+    }
+    m_selectedObject = Object{};
+    m_scene3DGizmoState = Scene3DGizmoState{};
+    m_showStartWizard = false;
+    return true;
+}
+
+void EditorApplication::RunNewProjectWithTemplate(bool create3DScene)
 {
     void* parentHwnd = nullptr;
 #if defined(_WIN32)
@@ -1073,7 +1140,7 @@ void EditorApplication::OnNewProject()
     if (selected.empty())
         return;
 
-    std::string projectRoot = selected;
+    const std::string& projectRoot = selected;
     if (ProjectDescriptor::IsProjectDirectory(projectRoot))
     {
         FDE_LOG_CLIENT_WARN("Directory already contains a project: {}", projectRoot);
@@ -1103,14 +1170,108 @@ void EditorApplication::OnNewProject()
 
     RefreshAssetPipeline();
 
-    // Reset world to default for new project
     m_world = std::make_unique<World>();
-    CreateDefaultScene3D(m_world.get());
+    if (create3DScene)
+        CreateDefaultScene3D(m_world.get());
+    else
+        CreateDefaultScene2D(m_world.get());
     SyncEditorActiveScenes();
     m_selectedObject = Object{};
     m_scene3DGizmoState = Scene3DGizmoState{};
+    ResolvePendingMeshes(m_world.get(), m_assetManager.get());
+    m_showStartWizard = false;
 
-    FDE_LOG_CLIENT_INFO("Created project: {}", projectRoot);
+    FDE_LOG_CLIENT_INFO("Created {} project: {}", create3DScene ? "3D" : "2D", projectRoot);
+}
+
+void EditorApplication::RenderStartWizard(ImGuiID dockspace_id)
+{
+    (void)dockspace_id;
+    ImVec2 avail = ImGui::GetContentRegionAvail();
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.07f, 0.07f, 0.08f, 1.0f));
+    ImGui::BeginChild("##StartWizardRoot", avail, false, ImGuiWindowFlags_NoScrollbar);
+    ImGui::PopStyleColor();
+
+    const float contentW = 420.0f;
+    float marginX = std::max(24.0f, (avail.x - contentW) * 0.5f);
+    ImGui::SetCursorPos(ImVec2(marginX, 48.0f));
+
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.92f, 0.92f, 0.94f, 1.0f));
+    if (ImFont* titleFont = GetImGuiContext() ? GetImGuiContext()->GetTitleFont() : nullptr)
+    {
+        ImGui::PushFont(titleFont);
+        ImGui::TextUnformatted("Ford Editor");
+        ImGui::PopFont();
+    }
+    else
+        ImGui::TextUnformatted("Ford Editor");
+    ImGui::PopStyleColor();
+
+    ImGui::SetCursorPosX(marginX);
+    ImGui::Spacing();
+    ImGui::TextDisabled("Start wizard.  Create or open a project to continue.");
+    ImGui::Spacing();
+    ImGui::Spacing();
+
+    ImGui::SetCursorPosX(marginX);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(16.0f, 12.0f));
+    ImVec4 btnIdle = ImVec4(0.18f, 0.18f, 0.20f, 1.0f);
+    ImVec4 btnHover = ImVec4(0.28f, 0.28f, 0.32f, 1.0f);
+    ImVec4 btnActive = ImVec4(0.22f, 0.22f, 0.25f, 1.0f);
+    ImGui::PushStyleColor(ImGuiCol_Button, btnIdle);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, btnHover);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, btnActive);
+    if (ImGui::Button("New Project...", ImVec2(contentW, 0.0f)))
+        m_requestNewProjectTemplateModal = true;
+    ImGui::Spacing();
+    ImGui::SetCursorPosX(marginX);
+    if (ImGui::Button("Open Project...", ImVec2(contentW, 0.0f)))
+        OnOpenProject();
+    ImGui::PopStyleColor(3);
+    ImGui::PopStyleVar();
+
+    ImGui::SetCursorPosX(marginX);
+    ImGui::Spacing();
+    ImGui::Spacing();
+    std::string last = m_preferences->GetLastProjectPath();
+    if (!last.empty())
+    {
+        ImGui::TextDisabled("Last project path:");
+        ImGui::SetCursorPosX(marginX);
+        ImGui::PushTextWrapPos(marginX + contentW);
+        ImGui::TextUnformatted(last.c_str());
+        ImGui::PopTextWrapPos();
+    }
+
+    ImGui::EndChild();
+}
+
+void EditorApplication::RenderNewProjectTemplateModal()
+{
+    ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+
+    if (!ImGui::BeginPopupModal("NewProjectTemplate", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        return;
+
+    ImGui::TextUnformatted("New Project");
+    ImGui::Separator();
+    ImGui::Spacing();
+    ImGui::TextDisabled("Default scene template:");
+    static int s_templateIs3D = 1;
+    ImGui::RadioButton("2D (empty 2D scene + sample triangle)", &s_templateIs3D, 0);
+    ImGui::RadioButton("3D (default lighting and sample meshes)", &s_templateIs3D, 1);
+    ImGui::Spacing();
+
+    if (ImGui::Button("Choose folder...", ImVec2(180.0f, 0.0f)))
+    {
+        ImGui::CloseCurrentPopup();
+        RunNewProjectWithTemplate(s_templateIs3D != 0);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(120.0f, 0.0f)))
+        ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
 }
 
 void EditorApplication::OnOpenProject()
@@ -1136,32 +1297,11 @@ void EditorApplication::OnOpenProject()
         return;
     }
 
-    m_world = std::make_unique<World>();
-    ProjectDescriptor desc;
-    std::string err;
-    if (!ProjectDescriptor::LoadFromDirectory(selected, desc, err, m_world.get()))
-    {
-        m_world.reset();
-        FDE_LOG_CLIENT_ERROR("Failed to load project: {}", err);
+    if (!LoadOpenedProject(selected))
         return;
-    }
 
-    FileSystem::SetProjectRoot(selected);
-    m_projectDescriptor = desc;
-    ApplySceneViewCameraFromDescriptor(desc, m_sceneCamera3D);
-    m_preferences->SetLastProjectPath(selected);
-    m_contentViewCurrentPath.clear();
-    RefreshAssetPipeline();
-    SyncEditorActiveScenes();
-    if (!m_scene2D && !m_scene3D && m_world->GetSceneNames().empty())
-    {
-        CreateDefaultScene3D(m_world.get());
-        SyncEditorActiveScenes();
-    }
     ResolvePendingMeshes(m_world.get(), m_assetManager.get());
-    m_selectedObject = Object{};
-    m_scene3DGizmoState = Scene3DGizmoState{};
-    FDE_LOG_CLIENT_INFO("Opened project: {} ({})", desc.name, selected);
+    FDE_LOG_CLIENT_INFO("Opened project: {} ({})", m_projectDescriptor->name, selected);
 }
 
 void EditorApplication::OnSaveProject()
@@ -1397,6 +1537,15 @@ void EditorApplication::RenderPreferencesWindow(ImGuiID dockspace_id)
                 s_contentIconSize = (s_contentIconSize < 24) ? 24 : (s_contentIconSize > 256 ? 256 : s_contentIconSize);
                 m_preferences->SetContentIconSize(s_contentIconSize);
             }
+        }
+        if (ImGui::CollapsingHeader("Startup", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            int startupMode = m_preferences->GetStartupLoadLastProject() ? 1 : 0;
+            ImGui::RadioButton("Show start wizard on launch", &startupMode, 0);
+            ImGui::RadioButton("Load last opened project on launch", &startupMode, 1);
+            if (startupMode != (m_preferences->GetStartupLoadLastProject() ? 1 : 0))
+                m_preferences->SetStartupLoadLastProject(startupMode != 0);
+            ImGui::TextDisabled("When the editor is started without a .fproject on the command line.");
         }
         if (ImGui::CollapsingHeader("Window", ImGuiTreeNodeFlags_DefaultOpen))
         {
